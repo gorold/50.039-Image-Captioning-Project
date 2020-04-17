@@ -9,10 +9,9 @@ from PIL import Image
 from build_vocab import Vocabulary
 from pycocotools.coco import COCO
 
-
 class CocoDataset(data.Dataset):
     """COCO Custom Dataset compatible with torch.utils.data.DataLoader."""
-    def __init__(self, root, json, vocab, transform=None):
+    def __init__(self, root, json, vocab, transform=None, data_augmentations = None):
         """Set the path for images, captions and vocabulary wrapper.
         
         Args:
@@ -25,6 +24,7 @@ class CocoDataset(data.Dataset):
         self.coco = COCO(json)
         self.ids = list(self.coco.anns.keys())
         self.vocab = vocab
+        self.data_augmentations = data_augmentations
         self.transform = transform
 
     def __getitem__(self, index):
@@ -36,7 +36,11 @@ class CocoDataset(data.Dataset):
         img_id = coco.anns[ann_id]['image_id']
         path = coco.loadImgs(img_id)[0]['file_name']
 
-        image = Image.open(os.path.join(self.root, path)).convert('RGB')
+        image = np.array(Image.open(os.path.join(self.root, path)).convert('RGB'))
+        if self.data_augmentations is not None:
+            data = {"image": image}
+            data = self.data_augmentations(**data)
+            image = data['image']
         if self.transform is not None:
             image = self.transform(image)
 
@@ -51,7 +55,6 @@ class CocoDataset(data.Dataset):
 
     def __len__(self):
         return len(self.ids)
-
 
 def collate_fn(data):
     """Creates mini-batch tensors from the list of tuples (image, caption).
@@ -84,13 +87,14 @@ def collate_fn(data):
         targets[i, :end] = cap[:end]        
     return images, targets, lengths
 
-def get_loader(root, json, vocab, transform, batch_size, shuffle, num_workers):
+def get_loader(root, json, vocab, transform, data_augmentations, batch_size, shuffle, num_workers):
     """Returns torch.utils.data.DataLoader for custom coco dataset."""
     # COCO caption dataset
     coco = CocoDataset(root=root,
                        json=json,
                        vocab=vocab,
-                       transform=transform)
+                       transform=transform, 
+                       data_augmentations = data_augmentations)
     
     # Data loader for COCO dataset
     # This will return (images, captions, lengths) for each iteration.
