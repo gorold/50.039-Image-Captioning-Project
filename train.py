@@ -5,7 +5,7 @@ import numpy as np
 import os
 import pickle
 from data_loader import get_loader 
-from build_vocab import Vocabulary
+from build_vocab import Vocabulary, glove_extract
 from model import EncoderCNN, DecoderRNN
 from torch.nn.utils.rnn import pack_padded_sequence
 from torchvision import transforms
@@ -21,6 +21,8 @@ def main(args):
 
     data_augmentations = get_augmentations(args.crop_size)
     
+    glove_path = os.path.join(os.getcwd(),'')
+    
     # Image preprocessing, normalization for the pretrained resnet
     transform = transforms.Compose([
         transforms.ToPILImage(),
@@ -32,6 +34,8 @@ def main(args):
     # Load vocabulary wrapper
     with open(args.vocab_path, 'rb') as f:
         vocab = pickle.load(f)
+
+    glove_embed = glove_extract(glove_path)
     
     # Build data loader
     data_loader = get_loader(args.image_dir, args.caption_path, vocab, 
@@ -58,7 +62,7 @@ def main(args):
             targets = pack_padded_sequence(captions, lengths, batch_first=True)[0]
             
             # Forward, backward and optimize
-            features = encoder(images)
+            features = encoder(images) # The encoder generates the features, which is passed into the LSTM as the first input
             outputs = decoder(features, captions, lengths)
             loss = criterion(outputs, targets)
             decoder.zero_grad()
