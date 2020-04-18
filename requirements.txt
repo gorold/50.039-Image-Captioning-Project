@@ -3,3 +3,8 @@ nltk
 numpy
 Pillow
 argparse
+bcolz
+annoy
+lmdb
+pycocotools
+albumentation
