@@ -7,4 +7,4 @@ bcolz
 annoy
 lmdb
 pycocotools
-albumentation
+albumentations
