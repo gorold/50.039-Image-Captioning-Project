@@ -48,9 +48,8 @@ class EncoderCNN(nn.Module):
         
     def forward(self, images):
         """Extract feature maps from input images."""
-        with torch.no_grad():
-            features = self.resnet(images)
-            features = F.normalize(features, p=2, dim=1) # L2 normalization over channels
+        features = self.resnet(images)
+        features = F.normalize(features, p=2, dim=1) # L2 normalization over channels
         return features
 
 class DecoderRNN(nn.Module):
@@ -89,80 +88,6 @@ class DecoderRNN(nn.Module):
         self.embed = nn.Embedding(len(vocab), embedding_size)
         if embedding_weights is not None:
             self.embed.weight.data.copy_(torch.from_numpy(embedding_weights))
-    
-#     def init_hidden(self, batch_size = 1):
-#         # Initialise hidden and cell states with specific batch_size
-#         # Do not call directly
-#         init_hidden_state_lang = torch.zeros(1, batch_size, self.lang_LSTM_hidden_size)
-#         init_cell_state_lang = torch.zeros(1, batch_size, self.lang_LSTM_hidden_size)
-#         init_hidden_state_att = torch.zeros(1, batch_size, self.att_LSTM_hidden_size)
-#         init_cell_state_att = torch.zeros(1, batch_size, self.att_LSTM_hidden_size)
-
-#         init_hidden_state_lang, init_cell_state_lang = init_hidden_state_lang.to(self.device), init_cell_state_lang.to(self.device)
-#         init_hidden_state_att, init_cell_state_att = init_hidden_state_att.to(self.device), init_cell_state_att.to(self.device)
-
-#         return init_hidden_state_lang, init_cell_state_lang, init_hidden_state_att, init_cell_state_att
-
-#     def word_embed(self, list_of_captions, first_input_tensor):
-#         """
-#         Takes a list of sentences and converts it to input X and ground truth. Word-level embedding using pre-trained word-embedding
-#         inputs:
-#             list_of_captions: A list of captions, one caption per batch
-#             type: list
-
-#             first_input_tensor: The reshaped output of the encoder. To be of shape (batch_size, input_size)
-#             type: tensor
-        
-#         returns:
-#             packed_input_tensor_batch: A packed sequence for the tensors in a batch. Each tensor in the batch has shape (sentence_length, #characters)
-#             type: torch.nn.utils.rnn.PackedSequence
-
-#             padded_target_tensor_batch: Tensor of shape (batch, max_sequence_length)
-#             type: tensor
-#         """
-#         input_tensor_batch = []
-#         target_tensor_batch = []
-#         if first_input_tensor is not None:
-#             assert first_input_tensor[1].shape == self.embedding_size, 'First input shape must be equivalent to the embedding shape'
-#             input_tensor_batch.append(input_tensor_batch)
-
-#         for caption in list_of_captions:
-#             # Pass the caption tensors through the embedding and dropout layers
-#             input_tensor_batch.append(self.dropout(self.embedding(encode_input_tensor(caption, self.vocab).to(self.device))))
-#             target_tensor_batch.append(encode_target_tensor(caption, self.vocab, first_input_tensor is not None).to(self.device))
-
-#         packed_input_tensor_batch = pack_sequence(input_tensor_batch, enforce_sorted = False)
-#         padded_target_tensor_batch, sequence_lengths = pad_packed_sequence(pack_sequence(target_tensor_batch, enforce_sorted=False), padding_value=-1, batch_first=True)
-
-#         return packed_input_tensor_batch, sequence_lengths, padded_target_tensor_batch
-        
-#     def forward(self, list_of_captions, feature_map=None, encoding_feature_map=None):
-#         """
-#         Standard forward function to train the RNN
-#         inputs:
-#             list_of_captions: A list of captions, one caption per batch
-#             type: list
-
-#             first_input_tensor: The reshaped output of the encoder
-#             type: tensor
-
-#             encoding_feature_map: Used for attention layer
-#             type: tensor
-
-#         returns:
-#             X: Predicted output sequence
-#             type: tensor
-
-#             y: Ground truth output sequence
-#             type: tensor
-#         """
-#         X, sequence_lengths, y = self.word_embed(list_of_captions, first_input_tensor)
-#         self.batch_size = sequence_lengths.shape[0] # Get Batch Size
-#         self.hidden = self.init_hidden(batch_size = self.batch_size) # Initialise hidden and cell states
-        
-#         X = self._internal_forward(X)
-#         y = y.view(-1)
-#         return X, y
     
     def forward(self, features, captions, lengths, ha0=None, ca0=None, hl0=None, cl0=None):
         """
@@ -258,7 +183,7 @@ class DecoderRNN(nn.Module):
     def beam_search(self, features, k=5):
         """
         Generate a caption using beam search. At evey step, maintain the top k candidates. If the next most probable word is the EOS, store the sequence.
-        Beam search is determinative. You will not get different results from running this twice.
+        Beam search is deterministic. You will not get different results from running this twice.
         
         Parameters
         ----------
@@ -274,93 +199,36 @@ class DecoderRNN(nn.Module):
             Candidate sentence with highest joint probability
         """
         assert features.shape[0] == 1
+        self.eval()
         candidates = []
         temp_candidates = [[[self.vocab('<start>')], None, None, None, None, 1]]
-        while len(candidates) < k:
-            new_temp_candidates = []
-            new_final_candidates = []
-            for sentence, ha0, ca0, hl0, cl0, prob in temp_candidates:
-                prev_word = torch.zeros(1,1).long().to(self.device)
-                prev_word[0,0] = sentence[-1]
-                lengths = [1]
-                logits, (hans, cans, hlns, clns) = self(features, prev_word, lengths, ha0, ca0, hl0, cl0)
-                softmax_probs = F.softmax(logits, dim=2)
-                top_values, top_indices = softmax_probs.topk(k-len(candidates))
-                for i in range(k - len(candidates)):
-                    curr_prob = float(top_values[0,0,i])
-                    curr_idx = int(top_indices[0,0,i])             
-                    new_sentence = [*sentence] + [curr_idx]
-                    new_prob = prob * curr_prob
-                    if curr_idx == self.vocab('<end>'):
-                        new_final_candidates.append([new_sentence, curr_prob])
-                    else:
-                        new_temp_candidates.append([new_sentence, hans, cans, hlns, clns, curr_prob])
-            if len(new_final_candidates) != 0:
-                candidates += new_final_candidates
-            new_temp_candidates.sort(key=lambda x: x[5], reverse=True)
-            temp_candidates = new_temp_candidates[:k-len(candidates)]
-        candidates.sort(key=lambda x: x[1])
-        print(candidates)
+        with torch.no_grad():
+            while len(candidates) < k:
+                new_temp_candidates = []
+                new_final_candidates = []
+                for sentence, ha0, ca0, hl0, cl0, prob in temp_candidates:
+                    prev_word = torch.zeros(1,1).long().to(self.device)
+                    prev_word[0,0] = sentence[-1]
+                    lengths = [1]
+                    logits, (hans, cans, hlns, clns) = self(features, prev_word, lengths, ha0, ca0, hl0, cl0)
+                    softmax_probs = F.softmax(logits, dim=2)
+                    top_values, top_indices = softmax_probs.topk(k-len(candidates))
+                    for i in range(k - len(candidates)):
+                        curr_prob = float(top_values[0,0,i])
+                        curr_idx = int(top_indices[0,0,i])             
+                        new_sentence = [*sentence] + [curr_idx]
+                        new_prob = prob * curr_prob
+                        if curr_idx == self.vocab('<end>'):
+                            new_final_candidates.append([new_sentence, curr_prob])
+                        else:
+                            new_temp_candidates.append([new_sentence, hans, cans, hlns, clns, curr_prob])
+                if len(new_final_candidates) != 0:
+                    candidates += new_final_candidates
+                new_temp_candidates.sort(key=lambda x: x[5], reverse=True)
+                temp_candidates = new_temp_candidates[:k-len(candidates)]
+            candidates.sort(key=lambda x: x[1])
         return candidates[-1]
             
-#     def beam_search(self, first_input_tensor, top_n=10, top_k_per_n=10):
-#         """
-#         Generate a caption using beam search. At evey step, maintain the top 10 sequences. If the next most probable word is the EOS, store the sequence.
-#         If there are insufficient sequences in the top 10 sequences due to the EOS token, check all completed sequences and return the top most.
-#         Beam search is determinative. You will not get different results from running this twice.
-#         inputs:
-#             first_input_tensor: tensor of hidden state from CNN
-#             type: tensor
-
-#             top_n: int to maintain the n tensors per step
-#             type: int
-
-#             top_k_per_n: int to find the next top k words for each of the n sequences present
-#             type: int
-
-#         returns:
-#             output_caption: Output Caption of Image
-#             type: str
-#         """  
-#         first_input_tensor = first_input_tensor.unsqueeze(0).to(self.device)
-#         with torch.no_grad():  # no need to track history in sampling
-#             self.hidden = self.init_hidden(batch_size = 1) # Initialise hidden and cell states
-#             sequences = []
-#             completed_sequences = []
-#             for t in range(self.max_seg_length):
-#                 if t == 0:
-#                     probs = self._get_softmax_probs(first_input_tensor).cpu().numpy().squeeze(0)
-#                     probs = np.log10(probs)
-#                     total = 0
-#                     for word_idx in np.argsort(probs):
-#                         if total == top_n:
-#                             break
-#                         if word_idx != 0:
-#                             sequences.append((probs[word_idx],[word_idx]))
-#                             total += 1
-#                 elif t > 0:
-#                     new_sequences = []
-#                     for sequence in sequences:
-#                         probs = self._get_softmax_probs(torch.tensor([sequence[1][-1]]).unsqueeze(0).type(torch.long).to(self.device)).cpu().numpy().squeeze(0)
-#                         probs = np.log10(probs) # Use log probs to avoid getting 0 for computation
-#                         for word_idx in np.argsort(probs)[:top_k_per_n]:
-#                             new_sequence = (sequence[0]+probs[word_idx], sequence[1] + [word_idx])
-#                             if word_idx != 0:
-#                                 new_sequences.append(new_sequence)
-#                             else:
-#                                 completed_sequences.append(new_sequence)
-#                     if len(new_sequences) < top_n:
-#                         completed_sequences = sorted(completed_sequences, key = lambda x:x[0], reverse=True)
-#                         break
-#                     else:
-#                         new_sequences = sorted(new_sequences, key = lambda x:x[0], reverse=True)
-#                         sequences = new_sequences[0:top_n]
-#             else:
-#                 completed_sequences = sorted(sequences, key = lambda x:x[0], reverse=True)
-
-#             top_seq = completed_sequences[0][1]
-#             caption = ' '.join([self.vocab.idx2word[word_idx] for word_idx in top_seq if word_idx != 0])
-#             return caption
 
     def sample_caption(self, first_input_tensor):
         """

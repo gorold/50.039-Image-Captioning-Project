@@ -21,7 +21,7 @@ def main(args):
 
     data_augmentations = get_augmentations(args.crop_size)
     
-    glove_path = os.path.join(os.getcwd(),'')
+#     glove_path = os.path.join(os.getcwd(),'')
     
     # Image preprocessing, normalization for the pretrained resnet
     transform = transforms.Compose([
@@ -35,7 +35,7 @@ def main(args):
     with open(args.vocab_path, 'rb') as f:
         vocab = pickle.load(f)
 
-    glove_embed = glove_extract(glove_path)
+#     glove_embed = glove_extract(glove_path)
     
     # Build data loader
     data_loader = get_loader(args.image_dir, args.caption_path, vocab, 
@@ -43,32 +43,38 @@ def main(args):
                              shuffle=True, num_workers=args.num_workers)
 
     # Build the models
-    encoder = EncoderCNN(args.embed_size).to(device)
-    decoder = DecoderRNN(args.embed_size, args.hidden_size, len(vocab), args.num_layers).to(device)
+    encoder = EncoderCNN().to(device)
+    decoder = DecoderRNN(args.lstm1_size, args.lstm2_size, args.att_size, vocab, args.embed_size, None, feature_size=args.feature_size).to(device)
+    # None to change to embedding weights? ^^^
     
     # Loss and optimizer
-    criterion = nn.CrossEntropyLoss()
-    params = list(decoder.parameters()) + list(encoder.linear.parameters()) + list(encoder.bn.parameters())
-    optimizer = torch.optim.Adam(params, lr=args.learning_rate)
+    criterion = nn.CrossEntropyLoss(ignore_index=0)
+    for p in encoder.parameters():
+        p.requires_grad = False
+    encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=args.learning_rate)
+    decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=args.learning_rate)
     
     # Train the models
     total_step = len(data_loader)
     for epoch in range(args.num_epochs):
+        encoder.train()
+        decoder.train()
         for i, (images, captions, lengths) in enumerate(data_loader):
+            decoder.zero_grad()
+            encoder.zero_grad()
             
             # Set mini-batch dataset
             images = images.to(device)
             captions = captions.to(device)
-            targets = pack_padded_sequence(captions, lengths, batch_first=True)[0]
             
             # Forward, backward and optimize
+            input_lengths = [l-1 for l in lengths]
             features = encoder(images) # The encoder generates the features, which is passed into the LSTM as the first input
-            outputs = decoder(features, captions, lengths)
-            loss = criterion(outputs, targets)
-            decoder.zero_grad()
-            encoder.zero_grad()
+            outputs, _ = decoder(features, captions, input_lengths)
+            loss = criterion(outputs.transpose(1,2), captions[:,1:])
+            
             loss.backward()
-            optimizer.step()
+            decoder_optimizer.step()
 
             # Print log info
             if i % args.log_step == 0:
@@ -82,26 +88,26 @@ def main(args):
                 torch.save(encoder.state_dict(), os.path.join(
                     args.model_path, 'encoder-{}-{}.ckpt'.format(epoch+1, i+1)))
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', type=str, default='models/' , help='path for saving trained models')
     parser.add_argument('--crop_size', type=int, default=224 , help='size for randomly cropping images')
     parser.add_argument('--vocab_path', type=str, default='data/vocab.pkl', help='path for vocabulary wrapper')
-    parser.add_argument('--image_dir', type=str, default='data/train2014', help='directory for resized images')
-    parser.add_argument('--caption_path', type=str, default='data/annotations/captions_train2014.json', help='path for train annotation json file')
+    parser.add_argument('--image_dir', type=str, default='data/coco2014/train2014', help='directory for resized images')
+    parser.add_argument('--caption_path', type=str, default='data/coco2014/trainval_coco2014_captions/captions_train2014.json', help='path for train annotation json file')
     parser.add_argument('--log_step', type=int , default=10, help='step size for prining log info')
     parser.add_argument('--save_step', type=int , default=1000, help='step size for saving trained models')
     
     # Model parameters
     parser.add_argument('--embed_size', type=int , default=256, help='dimension of word embedding vectors')
-    parser.add_argument('--hidden_size', type=int , default=512, help='dimension of lstm hidden states')
-    parser.add_argument('--num_layers', type=int , default=1, help='number of layers in lstm')
+    parser.add_argument('--lstm1_size', type=int, default=512, help='dimension of lstm1 hidden states')
+    parser.add_argument('--lstm2_size', type=int, default=512, help='dimension of lstm2 hidden states')
+    parser.add_argument('--att_size', type=int, default=256, help='dimension of attension inner dimension')
+    parser.add_argument('--feature_size', type=int, default=2048, help='dimension of CNN output')
     
     parser.add_argument('--num_epochs', type=int, default=5)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--num_workers', type=int, default=2)
     parser.add_argument('--learning_rate', type=float, default=0.001)
     args = parser.parse_args()
-    print(args)
     main(args)

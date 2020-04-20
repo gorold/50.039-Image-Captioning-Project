@@ -8,3 +8,4 @@ annoy
 lmdb
 pycocotools
 albumentations
+tqdm
