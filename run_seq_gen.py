@@ -14,6 +14,7 @@ from build_vocab import iteratefromdict, get_all_captions, glove_extract, create
 from utils.misc import log_print
 from utils.train import train_model
 from model import DecoderRNN
+from train_fasttext import load_fasttext
 
 def main(args):
     # Set up logging
@@ -31,11 +32,13 @@ def main(args):
     log_print(f'Vocab Loaded', logging)
     captions = get_all_captions(args.caption_path)[0:10000]
     log_print(f'Captions Loaded', logging)
-    glove = glove_extract(args.glove_path)
-    log_print(f'GLOVE Loaded', logging)
+    #glove = glove_extract(args.glove_path)
+    # Trains and loads fasttext
+    fasttext_wv = load_fasttext(args.caption_path)
+    log_print(f'FastText Loaded', logging)
     # create_annoy_index(args.annoy_dir, glove)
     # log_print(f'ANNOY Index Created', logging)
-    embed_dim = list(glove.values())[0].shape[0]
+    embed_dim = fasttext_wv.vectors_vocab.shape[1]
     # annoy_objs = dict(
     #     annoy_index = annoy.AnnoyIndex(embed_dim, metric='angular').load(os.path.join(args.annoy_dir,'annoy_idx.annoy')),
     #     key_idx_db = lmdb.open(os.path.join(args.annoy_dir,'word_idx_dict.lmdb'), map_size=int(1e9))
@@ -48,18 +51,11 @@ def main(args):
 
     # Setup the Weight Matrix for Embedding Layer
     embedding_weights = np.zeros((len(vocab), embed_dim))
-    words_not_found = 0
     for idx, word in enumerate(vocab.word2idx):
-        if word in glove.keys():
-            embedding_weights[idx] = glove[word]
-        elif word == '<EOS>':
+        if word == '<EOS>':
             embedding_weights[idx] = np.append(np.zeros(embed_dim-1),1)
         else:
-            embedding_weights[idx] = np.random.normal(scale=0.6, size=(embed_dim, ))
-            words_not_found += 1
-    
-    log_print(f'{words_not_found} words not found in GLOVE', logging)
-    
+            embedding_weights[idx] = fasttext_wv[word]
     decoder = DecoderRNN(hidden_size = args.hidden_size,
                         vocab = vocab,
                         embedding_size = embed_dim,
@@ -87,12 +83,11 @@ def main(args):
                 plots_save_path = os.path.join(os.getcwd(),'plots')
                 )
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', type=str, default='models/' , help='path for saving trained models')
     parser.add_argument('--crop_size', type=int, default=224 , help='size for randomly cropping images')
-    parser.add_argument('--vocab_path', type=str, default='data/vocab.pk', help='path for vocabulary wrapper')
+    parser.add_argument('--vocab_path', type=str, default='data/vocab.pkl', help='path for vocabulary wrapper')
     parser.add_argument('--image_dir', type=str, default='data/resized2014', help='directory for resized images')
     parser.add_argument('--caption_path', type=str, default='data/annotations/captions_train2014.json', help='path for train annotation json file')
     parser.add_argument('--glove_path', type=str, default='data/glove/', help='path for glove text file')

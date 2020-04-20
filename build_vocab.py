@@ -236,7 +236,7 @@ if __name__ == '__main__':
     parser.add_argument('--caption_path', type=str, 
                         default='data/annotations/captions_train2014.json', 
                         help='path for train annotation file')
-    parser.add_argument('--vocab_path', type=str, default='./data/vocab.pk', 
+    parser.add_argument('--vocab_path', type=str, default='./data/vocab.pkl', 
                         help='path for saving vocabulary wrapper')
     parser.add_argument('--threshold', type=int, default=0, 
                         help='minimum word count threshold')
