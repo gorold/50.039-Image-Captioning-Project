@@ -60,7 +60,6 @@ data
 *.bin
 *.npy
 *.gz
-trained_fasttext.pickle
 
 # Django stuff:
 *.log
