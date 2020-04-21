@@ -45,6 +45,7 @@ def main(args):
 
     # Load word embeddings
     fasttext_wv = load_fasttext(args.caption_path)
+    print("Loaded FastText word embeddings")
     embed_dim = fasttext_wv.vectors_vocab.shape[1]
     embedding_weights = np.zeros((len(vocab), embed_dim))
     for idx, word in enumerate(vocab.word2idx):
