@@ -125,9 +125,9 @@ class DecoderRNN(nn.Module):
         
 #         # Predict Words
         lstm2_out = pad_packed_sequence(lstm2_out, batch_first=True)[0]
-        logits = self.linear(lstm2_out)
+        logits = self.linear(lstm2_out).transpose(1,2)
         
-        return logits, (han, can, hln, cln)        
+        return logits, (han, can, hln, cln)
 
     def _internal_forward(self, X, sample=False):
         """

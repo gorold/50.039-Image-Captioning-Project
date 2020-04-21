@@ -15,45 +15,6 @@ from tqdm import tqdm
 from collections import Counter
 from pycocotools.coco import COCO
 
-class iteratefromdict():
-    def __init__(self, cat_dict, train, batch_size, seed, test = False, percentage_training = 0.8, percentage_test = 0.1):
-        self.train = train
-        self.seed = seed
-        self.cat_dict = cat_dict
-        self.ct = 0
-        self.batch_size = batch_size
-        self.namlab = cat_dict
-
-        np.random.seed(self.seed)
-        np.random.shuffle(self.namlab)
-        if train:
-            self.namlab = self.namlab[:int(percentage_training * len(self.namlab))]
-        elif test:
-            self.namlab = self.namlab[int(percentage_training * len(self.namlab)):int((percentage_training + percentage_test) * len(self.namlab))]
-        else:
-            self.namlab = self.namlab[int((percentage_training + percentage_test) * len(self.namlab)):]
-            
-    def num(self):
-        return len(self.namlab)
-    
-    def __iter__(self):
-        return self
-    
-    def __next__(self):
-        if self.ct >= len(self.namlab):
-            self.ct = 0
-            raise StopIteration()
-        else:
-            self.ct += self.batch_size
-            if self.ct >= len(self.namlab): # If overflow from list, then get from the start
-                remainder = self.batch_size - len(self.namlab[self.ct-self.batch_size:])
-                return self.namlab[self.ct-self.batch_size:] + self.namlab[:remainder]
-            else:
-                return self.namlab[self.ct - self.batch_size : self.ct]
-
-    def __len__(self):
-        return int(len(self.namlab)/self.batch_size)
-
 class Vocabulary(object):
     """Simple vocabulary wrapper."""
     def __init__(self):
@@ -90,13 +51,12 @@ def build_vocab(json, threshold):
 
     # Create a vocab wrapper and add some special tokens.
     vocab = Vocabulary()
-
+    vocab.add_word('<pad>') # index 0 is the padding index
     # Add the words to the vocabulary.
     for i, word in enumerate(words):
         vocab.add_word(word)
 
     # Add start, end, unk tokens to vocab
-    vocab.add_word('<start>')
     vocab.add_word('<end>')
     vocab.add_word('<unk>')
     
