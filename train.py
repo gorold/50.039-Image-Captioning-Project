@@ -107,7 +107,7 @@ if __name__ == '__main__':
     parser.add_argument('--save_step', type=int , default=1000, help='step size for saving trained models')
     
     # Model parameters
-    parser.add_argument('--embed_size', type=int , default=256, help='dimension of word embedding vectors')
+    parser.add_argument('--embed_size', type=int , default=300, help='dimension of word embedding vectors')
     parser.add_argument('--lstm1_size', type=int, default=512, help='dimension of lstm1 hidden states')
     parser.add_argument('--lstm2_size', type=int, default=512, help='dimension of lstm2 hidden states')
     parser.add_argument('--att_size', type=int, default=256, help='dimension of attension inner dimension')
