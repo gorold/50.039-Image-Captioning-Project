@@ -8,10 +8,11 @@ import nltk
 from PIL import Image
 from build_vocab import Vocabulary
 from pycocotools.coco import COCO
+from autocorrect import Speller
 
 class CocoDataset(data.Dataset):
     """COCO Custom Dataset compatible with torch.utils.data.DataLoader."""
-    def __init__(self, root, json, vocab, transform=None, data_augmentations = None):
+    def __init__(self, root, json, vocab, transform=None, data_augmentations = None, spell = None):
         """Set the path for images, captions and vocabulary wrapper.
         
         Args:
@@ -26,6 +27,11 @@ class CocoDataset(data.Dataset):
         self.vocab = vocab
         self.data_augmentations = data_augmentations
         self.transform = transform
+        self.spell = spell
+
+        # Clean up captions
+        invalid_caption_ids = [id for id in self.coco.anns.keys() if self.coco.anns[id]['caption'] == 'I am unable to see the image above.']
+        self.ids = [id for id in self.ids if id not in invalid_caption_ids]
 
     def __getitem__(self, index):
         """Returns one data pair (image and caption)."""
@@ -45,7 +51,10 @@ class CocoDataset(data.Dataset):
             image = self.transform(image)
 
         # Convert caption (string) to word ids.
-        tokens = nltk.tokenize.word_tokenize(str(caption).lower())
+        caption = str(caption).lower()
+        if self.spell is not None:
+            caption = self.spell(caption)
+        tokens = nltk.tokenize.word_tokenize(caption)
         caption = []
         caption.append(vocab('<start>'))
         caption.extend([vocab(token) for token in tokens])
@@ -89,12 +98,16 @@ def collate_fn(data):
 
 def get_loader(root, json, vocab, transform, data_augmentations, batch_size, shuffle, num_workers):
     """Returns torch.utils.data.DataLoader for custom coco dataset."""
+    # Initialise autocorrect object
+    spell = Speller()
+
     # COCO caption dataset
     coco = CocoDataset(root=root,
                        json=json,
                        vocab=vocab,
                        transform=transform, 
-                       data_augmentations = data_augmentations)
+                       data_augmentations = data_augmentations,
+                       spell = spell)
     
     # Data loader for COCO dataset
     # This will return (images, captions, lengths) for each iteration.

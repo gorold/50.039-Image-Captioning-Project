@@ -10,6 +10,7 @@ from model import EncoderCNN, DecoderRNN
 from torch.nn.utils.rnn import pack_padded_sequence
 from torchvision import transforms
 from augmentations import get_augmentations
+from train_fasttext import load_fasttext
 
 # Device configuration
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -42,9 +43,16 @@ def main(args):
                              transform, data_augmentations, args.batch_size,
                              shuffle=True, num_workers=args.num_workers)
 
+    # Load word embeddings
+    fasttext_wv = load_fasttext(args.caption_path)
+    embed_dim = fasttext_wv.vectors_vocab.shape[1]
+    embedding_weights = np.zeros((len(vocab), embed_dim))
+    for idx, word in enumerate(vocab.word2idx):
+        embedding_weights[idx] = fasttext_wv[word]
+
     # Build the models
     encoder = EncoderCNN().to(device)
-    decoder = DecoderRNN(args.lstm1_size, args.lstm2_size, args.att_size, vocab, args.embed_size, None, feature_size=args.feature_size).to(device)
+    decoder = DecoderRNN(args.lstm1_size, args.lstm2_size, args.att_size, vocab, args.embed_size, embedding_weights, feature_size=args.feature_size).to(device)
     # None to change to embedding weights? ^^^
     
     # Loss and optimizer

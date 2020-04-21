@@ -90,7 +90,6 @@ def build_vocab(json, threshold):
 
     # Create a vocab wrapper and add some special tokens.
     vocab = Vocabulary()
-    vocab.add_word('<EOS>')
 
     # Add the words to the vocabulary.
     for i, word in enumerate(words):
