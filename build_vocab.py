@@ -94,6 +94,12 @@ def build_vocab(json, threshold):
     # Add the words to the vocabulary.
     for i, word in enumerate(words):
         vocab.add_word(word)
+
+    # Add start, end, unk tokens to vocab
+    vocab.add_word('<start>')
+    vocab.add_word('<end>')
+    vocab.add_word('<unk>')
+    
     return vocab
 
 def get_all_captions(json):
