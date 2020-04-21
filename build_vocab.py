@@ -1,11 +1,11 @@
 import nltk
 import pickle
 import argparse
-import bcolz
+# import bcolz
+# import annoy
+# import lmdb
 import os
 import numpy as np
-import annoy
-import lmdb
 import sys
 import torch
 import re
@@ -100,89 +100,89 @@ def get_all_captions(json):
     coco = COCO(json)
     return [normalize_string(val['caption']) for val in coco.anns.values()]
 
-def create_annoy_index(file_dir, glove, num_trees=30, verbose=True):
-    '''
-    Create annoy index for GLOVE vectors
-    Create 2 way dictionary and store in lmdb
-    '''
-    fn_annoy = os.path.join(file_dir,'annoy_idx.annoy')
-    fn_lmdb = os.path.join(file_dir,'word_idx_dict.lmdb') # stores word <-> id mapping
+# def create_annoy_index(file_dir, glove, num_trees=30, verbose=True):
+#     '''
+#     Create annoy index for GLOVE vectors
+#     Create 2 way dictionary and store in lmdb
+#     '''
+#     fn_annoy = os.path.join(file_dir,'annoy_idx.annoy')
+#     fn_lmdb = os.path.join(file_dir,'word_idx_dict.lmdb') # stores word <-> id mapping
 
-    vec_length = list(glove.values())[0].shape[0]
+#     vec_length = list(glove.values())[0].shape[0]
 
-    if not os.path.exists(file_dir):
-        os.makedirs(file_dir)
+#     if not os.path.exists(file_dir):
+#         os.makedirs(file_dir)
     
-    env = lmdb.open(fn_lmdb, map_size=int(1e9))
-    if not os.path.exists(fn_annoy) or not os.path.exists(fn_lmdb):
-        annoy_index = annoy.AnnoyIndex(vec_length, metric='angular')
-        with env.begin(write=True) as txn:
-            with tqdm(enumerate(glove.keys()), desc='Creating Index', file=sys.stdout, total = len(glove)) as iterator:
-                for idx, word in iterator:
-                    vec = glove[word]
-                    annoy_index.add_item(idx, vec)
-                    word_id = 'i%d' % idx
-                    word = 'w' + word
-                    txn.put(word_id.encode(), word.encode())
-                    txn.put(word.encode(), word_id.encode())
-        if verbose:
-            print("Starting to build")
-        annoy_index.build(num_trees)
-        if verbose:
-            print("Finished building")
-        annoy_index.save(fn_annoy)
-        if verbose:
-            print(f"Annoy index saved to: {fn_annoy}")
-            print(f"lmdb map saved to: {fn_lmdb}")
-    else:
-        print("Annoy index and lmdb map already in path")
+#     env = lmdb.open(fn_lmdb, map_size=int(1e9))
+#     if not os.path.exists(fn_annoy) or not os.path.exists(fn_lmdb):
+#         annoy_index = annoy.AnnoyIndex(vec_length, metric='angular')
+#         with env.begin(write=True) as txn:
+#             with tqdm(enumerate(glove.keys()), desc='Creating Index', file=sys.stdout, total = len(glove)) as iterator:
+#                 for idx, word in iterator:
+#                     vec = glove[word]
+#                     annoy_index.add_item(idx, vec)
+#                     word_id = 'i%d' % idx
+#                     word = 'w' + word
+#                     txn.put(word_id.encode(), word.encode())
+#                     txn.put(word.encode(), word_id.encode())
+#         if verbose:
+#             print("Starting to build")
+#         annoy_index.build(num_trees)
+#         if verbose:
+#             print("Finished building")
+#         annoy_index.save(fn_annoy)
+#         if verbose:
+#             print(f"Annoy index saved to: {fn_annoy}")
+#             print(f"lmdb map saved to: {fn_lmdb}")
+#     else:
+#         print("Annoy index and lmdb map already in path")
 
-def glove_extract(glove_path):
-    '''
-    Extract GLOVE vectors from .dat and stores in a pickle file for easy access
-    GLOVE Extraction code: https://medium.com/@martinpella/how-to-use-pre-trained-word-embeddings-in-pytorch-71ca59249f76
-    ''' 
-    if not os.path.exists(os.path.join(glove_path,'glove.6B.50d.dat')) or not os.path.exists(os.path.join(glove_path,'glove.6B.50d.words.pk')) or not os.path.exists(os.path.join(glove_path,'glove.6B.50d.word2idx.pk')):
-        words = []
-        idx = 0
-        word2idx = {}
+# def glove_extract(glove_path):
+#     '''
+#     Extract GLOVE vectors from .dat and stores in a pickle file for easy access
+#     GLOVE Extraction code: https://medium.com/@martinpella/how-to-use-pre-trained-word-embeddings-in-pytorch-71ca59249f76
+#     ''' 
+#     if not os.path.exists(os.path.join(glove_path,'glove.6B.50d.dat')) or not os.path.exists(os.path.join(glove_path,'glove.6B.50d.words.pk')) or not os.path.exists(os.path.join(glove_path,'glove.6B.50d.word2idx.pk')):
+#         words = []
+#         idx = 0
+#         word2idx = {}
         
-        vectors = bcolz.carray(np.zeros(1), rootdir=os.path.join(glove_path,'glove.6B.50d.dat'), mode='w')
+#         vectors = bcolz.carray(np.zeros(1), rootdir=os.path.join(glove_path,'glove.6B.50d.dat'), mode='w')
 
-        with open(os.path.join(glove_path,'glove.6B.50d.txt'), 'rb') as f:
-            with tqdm(f, desc='Extracting Glove', file=sys.stdout, total = 400000) as iterator:
-                for l in iterator:
-                    line = l.decode().split()
-                    word = line[0]
-                    words.append(word)
-                    word2idx[word] = idx
-                    idx += 1
-                    vect = np.append(np.array(line[1:]).astype(np.float),0.)
-                    vectors.append(vect)
-            shape = vect.shape[0]
+#         with open(os.path.join(glove_path,'glove.6B.50d.txt'), 'rb') as f:
+#             with tqdm(f, desc='Extracting Glove', file=sys.stdout, total = 400000) as iterator:
+#                 for l in iterator:
+#                     line = l.decode().split()
+#                     word = line[0]
+#                     words.append(word)
+#                     word2idx[word] = idx
+#                     idx += 1
+#                     vect = np.append(np.array(line[1:]).astype(np.float),0.)
+#                     vectors.append(vect)
+#             shape = vect.shape[0]
             
-        vectors = bcolz.carray(vectors[1:].reshape((400000, shape)), rootdir=os.path.join(glove_path,'glove.6B.50d.dat'), mode='w')
-        vectors.flush()
-        pickle.dump(words, open(os.path.join(glove_path,'glove.6B.50d.words.pk'), 'wb'))
-        pickle.dump(word2idx, open(os.path.join(glove_path,'glove.6B.50d.word2idx.pk'), 'wb'))
-    else:
-        vectors = bcolz.open(os.path.join(glove_path,'glove.6B.50d.dat'))[:]
-        words = pickle.load(open(os.path.join(glove_path,'glove.6B.50d.words.pk'), 'rb'))
-        word2idx = pickle.load(open(os.path.join(glove_path,'glove.6B.50d.word2idx.pk'), 'rb'))
-    glove = {w: vectors[word2idx[w]] for w in words}
-    return glove
+#         vectors = bcolz.carray(vectors[1:].reshape((400000, shape)), rootdir=os.path.join(glove_path,'glove.6B.50d.dat'), mode='w')
+#         vectors.flush()
+#         pickle.dump(words, open(os.path.join(glove_path,'glove.6B.50d.words.pk'), 'wb'))
+#         pickle.dump(word2idx, open(os.path.join(glove_path,'glove.6B.50d.word2idx.pk'), 'wb'))
+#     else:
+#         vectors = bcolz.open(os.path.join(glove_path,'glove.6B.50d.dat'))[:]
+#         words = pickle.load(open(os.path.join(glove_path,'glove.6B.50d.words.pk'), 'rb'))
+#         word2idx = pickle.load(open(os.path.join(glove_path,'glove.6B.50d.word2idx.pk'), 'rb'))
+#     glove = {w: vectors[word2idx[w]] for w in words}
+#     return glove
 
-def glove_decode(vector_query, annoy_index, key_idx_db, num_results = 1, verbose=False):
-    ''' Returns the closest K words given the vector query
-    '''
-    ret_keys = []
-    with key_idx_db.begin() as txn:
-        for id in annoy_index.get_nns_by_vector(vector_query, num_results):
-            key = txn.get(('i%d' % id).encode())[1:]
-            ret_keys.append(key.decode())
-    if verbose:
-        print(f"Found: {len(ret_keys)} results")
-    return ret_keys
+# def glove_decode(vector_query, annoy_index, key_idx_db, num_results = 1, verbose=False):
+#     ''' Returns the closest K words given the vector query
+#     '''
+#     ret_keys = []
+#     with key_idx_db.begin() as txn:
+#         for id in annoy_index.get_nns_by_vector(vector_query, num_results):
+#             key = txn.get(('i%d' % id).encode())[1:]
+#             ret_keys.append(key.decode())
+#     if verbose:
+#         print(f"Found: {len(ret_keys)} results")
+#     return ret_keys
 
 def encode_input_tensor(caption, vocab):
     '''
