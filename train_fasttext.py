@@ -1,5 +1,5 @@
 import gensim
-from utils.downloadFastText import download_model 
+from util.downloadFastText import download_model 
 import os
 import pickle
 from pycocotools.coco import COCO
