@@ -43,19 +43,19 @@ class EncoderCNN(nn.Module):
     def __init__(self):
         """Load the pretrained ResNet-152 and replace top fc layer."""
         super(EncoderCNN, self).__init__()
-        # net = EfficientNet.from_pretrained('efficientnet-b0')
-        # net._avg_pooling = nn.Identity()
-        # net._dropout = nn.Identity()
-        # net._fc = nn.Identity()
+        net = EfficientNet.from_pretrained('efficientnet-b0')
+        net._avg_pooling = nn.Identity()
+        net._dropout = nn.Identity()
+        net._fc = nn.Identity()
 
-        resnet = models.resnet152(pretrained=True)
-        modules = list(resnet.children())[:-2]      # Delete the last fc layer and adaptive pooling.
-        net = nn.Sequential(*modules)
+        # resnet = models.resnet152(pretrained=True)
+        # modules = list(resnet.children())[:-2]      # Delete the last fc layer and adaptive pooling.
+        # net = nn.Sequential(*modules)
         self.net = net
         
     def forward(self, images):
         """Extract feature maps from input images."""
-        features = self.net(images)#.view(-1,1280,7,7)
+        features = self.net(images).view(-1,1280,7,7)
         features = F.normalize(features, p=2, dim=1) # L2 normalization over channels
         return features
 

@@ -159,7 +159,7 @@ if __name__ == '__main__':
     parser.add_argument('--lstm1_size', type=int, default=512, help='dimension of lstm1 hidden states')
     parser.add_argument('--lstm2_size', type=int, default=512, help='dimension of lstm2 hidden states')
     parser.add_argument('--att_size', type=int, default=256, help='dimension of attension inner dimension')
-    parser.add_argument('--feature_size', type=int, default=2048, help='dimension of CNN output')
+    parser.add_argument('--feature_size', type=int, default=1280, help='dimension of CNN output')
     
     parser.add_argument('--num_epochs', type=int, default=5)
     parser.add_argument('--batch_size', type=int, default=32)
