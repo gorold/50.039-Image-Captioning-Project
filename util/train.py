@@ -135,7 +135,7 @@ class Epoch(object):
         return cumulative_logs
 
 class TrainEpoch(Epoch):
-    def __init__(self, encoder, decoder, loss, metrics, optimizer_encoder, optimizer_decoder, device='cpu', verbose=True, logger = None):
+    def __init__(self, encoder, decoder, loss, metrics, optimizer, device='cpu', verbose=True, logger = None):
         super().__init__(
             encoder=encoder,
             decoder=decoder,
@@ -146,22 +146,20 @@ class TrainEpoch(Epoch):
             verbose=verbose,
             logger=logger
         )
-        self.optimizer_encoder = optimizer_encoder
-        self.optimizer_decoder = optimizer_decoder
+        self.optimizer = optimizer
 
     def on_epoch_start(self):
         self.encoder.train()
         self.decoder.train()
 
     def batch_update(self, images, captions, lengths):
-        self.optimizer_encoder.zero_grad()
-        self.optimizer_decoder.zero_grad()
+        self.optimizer.zero_grad()
 
         features = self.encoder(images) # The encoder generates the features, which is passed into the LSTM as the first input
         predictions, _ = self.decoder(features, captions, lengths)
         loss = self.loss(predictions, captions)
         loss.backward()
-        self.optimizer_decoder.step() # Not optimising on the encoder 
+        self.optimizer.step()
 
         return loss, predictions
 
@@ -252,8 +250,7 @@ def train_model(train_dataloader,
         decoder = model[1],
         loss = loss,
         metrics = train_metrics,
-        optimizer_encoder = optimizer[0],
-        optimizer_decoder = optimizer[1],
+        optimizer = optimizer,
         device = device,
         verbose = verbose,
         logger = logger,
