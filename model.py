@@ -7,6 +7,7 @@ import nltk
 
 from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence, pack_padded_sequence
 from build_vocab import encode_input_tensor, encode_target_tensor
+from efficientnet_pytorch import EfficientNet
 
 class Attention(nn.Module):
     """Additive Attention"""
@@ -42,13 +43,19 @@ class EncoderCNN(nn.Module):
     def __init__(self):
         """Load the pretrained ResNet-152 and replace top fc layer."""
         super(EncoderCNN, self).__init__()
+        # net = EfficientNet.from_pretrained('efficientnet-b0')
+        # net._avg_pooling = nn.Identity()
+        # net._dropout = nn.Identity()
+        # net._fc = nn.Identity()
+
         resnet = models.resnet152(pretrained=True)
         modules = list(resnet.children())[:-2]      # Delete the last fc layer and adaptive pooling.
-        self.resnet = nn.Sequential(*modules)
+        net = nn.Sequential(*modules)
+        self.net = net
         
     def forward(self, images):
         """Extract feature maps from input images."""
-        features = self.resnet(images)
+        features = self.net(images).view(-1,1280,7,7)
         features = F.normalize(features, p=2, dim=1) # L2 normalization over channels
         return features
 
@@ -125,9 +132,9 @@ class DecoderRNN(nn.Module):
         
 #         # Predict Words
         lstm2_out = pad_packed_sequence(lstm2_out, batch_first=True)[0]
-        logits = self.linear(lstm2_out)
+        logits = self.linear(lstm2_out).transpose(1,2)
         
-        return logits, (han, can, hln, cln)        
+        return logits, (han, can, hln, cln)
 
     def _internal_forward(self, X, sample=False):
         """

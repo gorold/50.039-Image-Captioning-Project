@@ -7,7 +7,12 @@ import datetime as dt
 import sys
 
 from tqdm import tqdm
-from utils.misc import log_print
+
+def log_print(text, logger, log_only = False):
+    if not log_only:
+        print(text)
+    if logger is not None:
+        logger.info(text)
 
 class AverageValueMeter(object):
     def __init__(self):
@@ -48,9 +53,11 @@ class AverageValueMeter(object):
         self.std = np.nan
 
 class Epoch(object):
-    def __init__(self, model, loss, stage_name, device='cpu', verbose=True, logger = None):
-        self.model = model
+    def __init__(self, encoder, decoder, loss, metrics, stage_name, device='cpu', verbose=True, logger = None):
+        self.encoder = encoder
+        self.decoder = decoder
         self.loss = loss
+        self.metrics = metrics
         self.stage_name = stage_name
         self.verbose = verbose
         self.device = device
@@ -59,7 +66,8 @@ class Epoch(object):
         self._to_device()
 
     def _to_device(self):
-        self.model.to(self.device)
+        self.encoder.to(self.device)
+        self.decoder.to(self.device)
         self.loss.to(self.device)
 
     def _format_logs(self, logs):
@@ -67,18 +75,11 @@ class Epoch(object):
         s = ', '.join(str_logs)
         return s
 
-    def batch_update(self, x):
+    def batch_update(self, *args):
         raise NotImplementedError
 
     def on_epoch_start(self):
         pass
-    
-    @staticmethod
-    def correct_counts(y_pred, y):
-        y_pred, y = y_pred.cpu(), y.cpu()
-        mask = (y > -1)
-        _, indices = torch.max(y_pred, 1)
-        return (indices[mask] == y[mask]).float()
 
     def run(self, dataloader):
 
@@ -87,88 +88,134 @@ class Epoch(object):
         logs = {}
         loss_meter = AverageValueMeter()
         correct_count_meter = AverageValueMeter()
+        bleu_rouge = [AverageValueMeter() for i in range(5)]
 
         with tqdm(dataloader, desc=self.stage_name, file=sys.stdout, disable=not (self.verbose)) as iterator:
             # Run for 1 epoch
-            for x in iterator:
-                loss, y_pred, y = self.batch_update(x)
+            for x, y, lengths, img_ids in iterator:
+                x, y = x.to(self.device), y.to(self.device)
+                loss, y_pred = self.batch_update(x, y, lengths)
 
                 # update loss logs
-                loss_value = loss.cpu().detach().numpy()
+                loss_value = loss.item()
                 loss_meter.add(loss_value)
                 loss_logs = {'CrossEntropyLoss': loss_meter.mean}
                 logs.update(loss_logs)
 
                 # update metrics logs
-                metric_value = self.correct_counts(y_pred, y).cpu().detach().numpy()
+                metric_value = self.metrics[0].evaluate(y_pred, y)
                 correct_count_meter.add(metric_value.sum().item(),n = metric_value.shape[0])
-                metrics_logs = {'Accuracy': correct_count_meter.mean}
+
+                # Update Bleu Rouge Scores
+                metric_values = self.metrics[1].evaluate(y_pred, y, img_ids)
+                for i in range(5):
+                    bleu_rouge[i].add(metric_values[i])
+
+                metrics_logs = {'Accuracy': correct_count_meter.mean,
+                                'Bleu_1': bleu_rouge[0].mean,
+                                'Bleu_2': bleu_rouge[1].mean,
+                                'Bleu_3': bleu_rouge[2].mean,
+                                'Bleu_4': bleu_rouge[3].mean,
+                                'Rouge': bleu_rouge[4].mean}
                 logs.update(metrics_logs)
 
                 if self.verbose:
                     s = self._format_logs(logs)
                     iterator.set_postfix_str(s)
 
-        cumulative_logs = {'Accuracy': correct_count_meter.sum/correct_count_meter.n}
+        cumulative_logs = {'accuracy': correct_count_meter.sum/correct_count_meter.n,
+                            'bleu_1': bleu_rouge[0].sum/bleu_rouge[0].n,
+                            'bleu_2': bleu_rouge[1].sum/bleu_rouge[1].n,
+                            'bleu_3': bleu_rouge[2].sum/bleu_rouge[2].n,
+                            'bleu_4': bleu_rouge[3].sum/bleu_rouge[3].n,
+                            'rouge': bleu_rouge[4].sum/bleu_rouge[4].n}
         cumulative_logs['loss'] = loss_meter.sum/loss_meter.n
         log_print(" ".join([f"{k}:{v:.4f}" for k, v in cumulative_logs.items()]), self.logger, log_only = True)
 
         return cumulative_logs
 
 class TrainEpoch(Epoch):
-    def __init__(self, model, loss, optimizer, device='cpu', verbose=True, logger = None):
+    def __init__(self, encoder, decoder, loss, metrics, optimizer_encoder, optimizer_decoder, device='cpu', verbose=True, logger = None):
         super().__init__(
-            model=model,
+            encoder=encoder,
+            decoder=decoder,
             loss=loss,
+            metrics = metrics,
             stage_name='train',
             device=device,
             verbose=verbose,
             logger=logger
         )
-        self.optimizer = optimizer
+        self.optimizer_encoder = optimizer_encoder
+        self.optimizer_decoder = optimizer_decoder
 
     def on_epoch_start(self):
-        self.model.train()
+        self.encoder.train()
+        self.decoder.train()
 
-    def batch_update(self, x):
-        self.optimizer.zero_grad()
-        prediction, ground_truth = self.model.forward(x)
-        loss = self.loss(prediction, ground_truth)
+    def batch_update(self, images, captions, lengths):
+        self.optimizer_encoder.zero_grad()
+        self.optimizer_decoder.zero_grad()
+
+        features = self.encoder(images) # The encoder generates the features, which is passed into the LSTM as the first input
+        predictions, _ = self.decoder(features, captions, lengths)
+        loss = self.loss(predictions, captions)
         loss.backward()
-        self.optimizer.step()
-        return loss, prediction, ground_truth
+        self.optimizer_decoder.step() # Not optimising on the encoder 
+
+        return loss, predictions
 
 class ValidEpoch(Epoch):
-    def __init__(self, model, loss, device='cpu', verbose=True, logger = None):
+    def __init__(self, encoder, decoder, loss, metrics, device='cpu', verbose=True, logger = None):
         super().__init__(
-            model=model,
+            encoder=encoder,
+            decoder=decoder,
             loss=loss,
+            metrics = metrics,
             stage_name='valid',
             device=device,
             verbose=verbose,
-            logger = logger
+            logger=logger
         )
 
     def on_epoch_start(self):
-        self.model.eval()
+        self.encoder.eval()
+        self.decoder.eval()
 
-    def batch_update(self, x):
+    def batch_update(self, images, captions, lengths):
         with torch.no_grad():
-            prediction, ground_truth = self.model.forward(x)
-            loss = self.loss(prediction, ground_truth)
-        return loss, prediction, ground_truth
+            features = self.encoder(images)
+            predictions, _ = self.decoder(features, captions, lengths)
+            loss = self.loss(predictions, captions)
+        return loss, predictions
 
-def plot(train_losses, val_losses, train_acc, val_acc):
-    fig, ax = plt.subplots(1,2, figsize = (10,5))
+def plot(train_losses, val_losses, train_metrics, val_metrics):
+    fig, ax = plt.subplots(1,4, figsize = (20,5))
     ax[0].set_title('Loss Value')
     ax[0].plot(train_losses, color = 'skyblue', label="Training Loss")
     ax[0].plot(val_losses, color = 'orange', label = "Validation Loss")
     ax[0].legend()
 
-    ax[1].set_title('Measure Value')
-    ax[1].plot(train_acc, color = 'skyblue', label="Training Measure")
-    ax[1].plot(val_acc, color = 'orange', label="Validation Measure")
+    ax[1].set_title('Accuracy')
+    ax[1].plot(train_metrics['accuracy'], color = 'skyblue', label="Training Accuracy")
+    ax[1].plot(val_metrics['accuracy'], color = 'orange', label="Validation Accuracy")
     ax[1].legend()
+
+    ax[2].set_title('Bleu')
+    ax[2].plot(train_metrics['bleu_1'], color = 'skyblue', label="Training Bleu 1")
+    ax[2].plot(train_metrics['bleu_2'], color = 'dodgerblue', label="Training Blue 2")
+    ax[2].plot(train_metrics['bleu_3'], color = 'royalblue', label="Training Bleu 3")
+    ax[2].plot(train_metrics['bleu_4'], color = 'navy', label="Training Bleu 4")
+    ax[2].plot(val_metrics['bleu_1'], color = 'lightcoral', label="Validation Bleu 1")
+    ax[2].plot(val_metrics['bleu_2'], color = 'indianred', label="Validation Blue 2")
+    ax[2].plot(val_metrics['bleu_3'], color = 'brown', label="Validation Bleu 3")
+    ax[2].plot(val_metrics['bleu_4'], color = 'maroon', label="Validation Bleu 4")
+    ax[2].legend()
+
+    ax[3].set_title('Rouge')
+    ax[3].plot(train_metrics['rouge'], color = 'skyblue', label="Training Rouge")
+    ax[3].plot(val_metrics['rouge'], color = 'orange', label="Validation Rouge")
+    ax[3].legend()
     cwd = os.getcwd()
 
     if not os.path.exists(os.path.join(cwd,'plots')):
@@ -180,6 +227,8 @@ def train_model(train_dataloader,
                 validation_dataloader,
                 model,
                 loss,
+                train_metrics,
+                val_metrics,
                 optimizer,
                 scheduler = None,
                 batch_size = 1,
@@ -199,25 +248,31 @@ def train_model(train_dataloader,
     
     # Define Epochs
     train_epoch = TrainEpoch(
-        model = model,
-        loss = loss, 
-        optimizer = optimizer,
+        encoder = model[0],
+        decoder = model[1],
+        loss = loss,
+        metrics = train_metrics,
+        optimizer_encoder = optimizer[0],
+        optimizer_decoder = optimizer[1],
         device = device,
         verbose = verbose,
         logger = logger,
     )
 
     valid_epoch = ValidEpoch(
-        model = model, 
-        loss = loss, 
+        encoder = model[0],
+        decoder = model[1],
+        loss = loss,
+        metrics = val_metrics,
         device = device,
         verbose = verbose,
         logger = logger,
     )
 
     # Record for plotting
+    metric_names = ['accuracy','bleu_1','bleu_2','bleu_3','rouge']
     losses = {'train':[],'val':[]}
-    metric_values = {'train':{'Accuracy':[]},'val':{'Accuracy':[]}}
+    metric_values = {'train':{name:[] for name in metric_names},'val':{name:[] for name in metric_names}}
 
     # Run Epochs
     best_perfmeasure = 0
@@ -230,17 +285,13 @@ def train_model(train_dataloader,
 
         train_logs = train_epoch.run(train_dataloader)
         losses['train'].append(train_logs['loss'])
-        metric_values['train']['Accuracy'].append(train_logs['Accuracy'])
+        for metric in metric_names:
+            metric_values['train'][metric].append(train_logs[metric])
 
         valid_logs = valid_epoch.run(validation_dataloader)
         losses['val'].append(valid_logs['loss'])
-        metric_values['val']['Accuracy'].append(valid_logs['Accuracy'])
-        
-        log_print('Random Sampling', logger)
-        for _ in range(20):
-            log_print(model.sample_caption(torch.tensor([0])), logger)
-        log_print('Beam Search', logger)
-        log_print(model.beam_search(torch.tensor([0])), logger)
+        for metric in metric_names:
+            metric_values['val'][metric].append(valid_logs[metric])
 
         if scheduler is not None:
             scheduler.step()
@@ -249,8 +300,8 @@ def train_model(train_dataloader,
         if not os.path.exists(model_save_path):
             os.makedirs(model_save_path)
 
-        if best_perfmeasure < valid_logs['Accuracy']: # Right now the metric to be chosen for best_perf_measure is always the first metric
-            best_perfmeasure = valid_logs['Accuracy']
+        if best_perfmeasure < valid_logs['accuracy']: # Right now the metric to be chosen for best_perf_measure is always the first metric
+            best_perfmeasure = valid_logs['accuracy']
             best_epoch = epoch
 
             torch.save(model, os.path.join(model_save_path,model_save_prefix + 'best_model.pth'))
@@ -263,5 +314,5 @@ def train_model(train_dataloader,
     log_print(f'Time Taken to train: {dt.datetime.now()-start_time}', logger)
 
     # Implement plotting feature
-    plot(losses['train'],losses['val'],metric_values['train']['Accuracy'],metric_values['val']['Accuracy'])
+    plot(losses['train'],losses['val'],metric_values['train'],metric_values['val'])
     log_print('Plot Saved', logger)
