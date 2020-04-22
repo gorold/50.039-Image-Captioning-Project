@@ -14,6 +14,7 @@ import unicodedata
 from tqdm import tqdm
 from collections import Counter
 from pycocotools.coco import COCO
+from autocorrect import Speller
 
 class Vocabulary(object):
     """Simple vocabulary wrapper."""
@@ -36,7 +37,7 @@ class Vocabulary(object):
     def __len__(self):
         return len(self.word2idx)
 
-def build_vocab(json, threshold):
+def build_vocab(json, threshold, spell = None):
     coco = COCO(json)
     counter = Counter()
     ids = coco.anns.keys()
@@ -48,6 +49,8 @@ def build_vocab(json, threshold):
 
     # If the word frequency is less than 'threshold', then the word is discarded.
     words = [word for word, cnt in counter.items() if cnt >= threshold]
+    if spell is not None:
+        words = [spell(word) for word, cnt in counter.items()]
 
     # Create a vocab wrapper and add some special tokens.
     vocab = Vocabulary()
@@ -189,7 +192,7 @@ def normalize_string(s):
     return s
 
 def main(args):
-    vocab = build_vocab(json=args.caption_path, threshold=args.threshold)
+    vocab = build_vocab(json=args.caption_path, threshold=args.threshold, spell = Speller())
     vocab_path = args.vocab_path
     with open(vocab_path, 'wb') as f:
         pickle.dump(vocab, f)

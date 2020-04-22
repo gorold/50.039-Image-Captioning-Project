@@ -227,7 +227,8 @@ def train_model(train_dataloader,
                 validation_dataloader,
                 model,
                 loss,
-                metrics,
+                train_metrics,
+                val_metrics,
                 optimizer,
                 scheduler = None,
                 batch_size = 1,
@@ -250,7 +251,7 @@ def train_model(train_dataloader,
         encoder = model[0],
         decoder = model[1],
         loss = loss,
-        metrics = metrics,
+        metrics = train_metrics,
         optimizer_encoder = optimizer[0],
         optimizer_decoder = optimizer[1],
         device = device,
@@ -262,7 +263,7 @@ def train_model(train_dataloader,
         encoder = model[0],
         decoder = model[1],
         loss = loss,
-        metrics = metrics,
+        metrics = val_metrics,
         device = device,
         verbose = verbose,
         logger = logger,
@@ -291,8 +292,6 @@ def train_model(train_dataloader,
         losses['val'].append(valid_logs['loss'])
         for metric in metric_names:
             metric_values['val'][metric].append(valid_logs[metric])
-
-        raise Exception
 
         if scheduler is not None:
             scheduler.step()
