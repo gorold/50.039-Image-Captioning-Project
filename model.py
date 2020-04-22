@@ -55,7 +55,7 @@ class EncoderCNN(nn.Module):
         
     def forward(self, images):
         """Extract feature maps from input images."""
-        features = self.net(images).view(-1,1280,7,7)
+        features = self.net(images)#.view(-1,1280,7,7)
         features = F.normalize(features, p=2, dim=1) # L2 normalization over channels
         return features
 
