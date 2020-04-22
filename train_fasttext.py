@@ -47,7 +47,7 @@ def train_words(fb_model, json_fp, spell):
     with open(f"{os.getcwd()}/wordEmbeddings/trained_fasttext.pickle", 'wb') as fp:
         pickle.dump(fb_model.wv, fp)
     print('Trained model saved')
-    return fb_model
+    return fb_model.wv
 
 def load_fasttext(json_fp, spell_check = True):
     if os.path.isfile(f"{os.getcwd()}/wordEmbeddings/trained_fasttext.pickle"):
