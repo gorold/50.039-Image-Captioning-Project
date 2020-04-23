@@ -55,6 +55,7 @@ def build_vocab(json, threshold, spell = None):
     # Create a vocab wrapper and add some special tokens.
     vocab = Vocabulary()
     vocab.add_word('<pad>') # index 0 is the padding index
+    vocab.add_word('<start>') # index 1 is start
     # Add the words to the vocabulary.
     for i, word in enumerate(words):
         vocab.add_word(word)
@@ -202,7 +203,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--caption_path', type=str, 
-                        default='data/annotations/captions_train2014.json', 
+                        default='data/coco2014/trainval_coco2014_captions/captions_train2014.json', 
                         help='path for train annotation file')
     parser.add_argument('--vocab_path', type=str, default='./data/vocab.pkl', 
                         help='path for saving vocabulary wrapper')

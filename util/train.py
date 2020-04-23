@@ -313,3 +313,141 @@ def train_model(train_dataloader,
     # Implement plotting feature
     plot(losses['train'],losses['val'],metric_values['train'],metric_values['val'])
     log_print('Plot Saved', logger)
+
+def validate_and_plot(validation_dataloader,
+                    validation_dataloader_org,
+                    model,
+                    metrics,
+                    top_n = 20,
+                    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
+                    logger = None,
+                    verbose = True,
+                    plots_save_path = os.path.join(os.getcwd(),'prediction_plots'),
+                    prefix = 'Val',
+                    threshold = 0.5
+                    ):
+    # Plots the top N images in terms of Bleu Scores scores
+
+    # Helper function to return the image, the predicted mask and the actual mask for any datapoint
+    def _get_image_mask(data, model, class_idx):
+        aug_data, org_data = data
+        inputs = aug_data[0].to(device)
+        masks_pred = model(inputs)
+
+        img = org_data[0][0].detach().cpu()
+        mask = aug_data[1][0][class_idx].cpu()
+        mask_pred = masks_pred[0][class_idx].cpu()
+        mask_pred = np.where(mask_pred > threshold,1,0)
+        trans = torchvision.transforms.ToPILImage()
+        
+        img = np.array(trans(img))
+        return img, mask_pred, mask
+
+    # Helper function to plot mask and original pictures
+    def _plot_topn(rank, metric_info, low_high_str):
+        fig, ax = plt.subplots(2*len(metrics),len(classes), figsize=(7*len(classes), 10*len(metrics)))
+        for class_idx, _class in enumerate(classes):
+            for m_idx, metric in enumerate(metrics):
+                # Plot the Ground Truth
+                if len(classes) > 1:
+                    ax[m_idx*2,class_idx].imshow(metric_info[_class,metric.__name__][rank][0])
+                    ax[m_idx*2,class_idx].imshow(metric_info[_class,metric.__name__][rank][2], alpha=0.3, cmap='gray')
+                    ax[m_idx*2,class_idx].set_title(f'{_class} Ground Truth {metric.__name__}:{metric_info[_class,metric.__name__][rank][3]:.3f}', fontsize=12)
+
+                    # Plot the picture and the masks
+                    ax[m_idx*2+1,class_idx].imshow(metric_info[_class,metric.__name__][rank][0])
+                    ax[m_idx*2+1,class_idx].imshow(metric_info[_class,metric.__name__][rank][1], alpha=0.3, cmap='gray')
+                    ax[m_idx*2+1,class_idx].set_title(f'{_class} Prediction {metric.__name__}:{metric_info[_class,metric.__name__][rank][3]:.3f}', fontsize=12)
+                else:
+                    ax[m_idx*2].imshow(metric_info[_class,metric.__name__][rank][0])
+                    ax[m_idx*2].imshow(metric_info[_class,metric.__name__][rank][2], alpha=0.3, cmap='gray')
+                    ax[m_idx*2].set_title(f'{_class} Ground Truth {metric.__name__}:{metric_info[_class,metric.__name__][rank][3]:.3f}', fontsize=12)
+
+                    # Plot the picture and the masks
+                    ax[m_idx*2+1].imshow(metric_info[_class,metric.__name__][rank][0])
+                    ax[m_idx*2+1].imshow(metric_info[_class,metric.__name__][rank][1], alpha=0.3, cmap='gray')
+                    ax[m_idx*2+1].set_title(f'{_class} Prediction {metric.__name__}:{metric_info[_class,metric.__name__][rank][3]:.3f}', fontsize=12)
+                
+        current_time = str(dt.datetime.now())[0:10].replace('-','_')
+        if not os.path.exists(os.path.join(plots_save_path,current_time)):
+            os.makedirs(os.path.join(plots_save_path,current_time))
+        fig.suptitle(f'{low_high_str} {rank+1}', fontsize=20)
+        plt.savefig(os.path.join(plots_save_path,current_time, f"{prefix}_{low_high_str}_{rank+1}.png"))
+        plt.close()
+        log_print(f'Plot {low_high_str} {rank+1} saved', logger)
+
+    log_print('Running Inference...', logger)
+    picture_iou_scores = OrderedDict()
+
+    if torch.cuda.is_available():
+        model.cuda()
+
+    with tqdm(validation_dataloader, desc='Inference Round 1', file=sys.stdout, disable=False) as iterator:
+        for data_idx, data in enumerate(iterator):
+            inputs = data[0].to(device)
+            masks_pred = model(inputs)
+
+            # Make sure batch size is 1
+            assert len(inputs) == 1
+            masks = data[1][0].to(device)
+            masks_pred = masks_pred[0]
+            if masks_pred.shape[0] != len(classes):
+                raise Exception('Your model predicts more classes than the number of classes specified')
+
+            for class_idx in range(len(classes)):
+                for metric in metrics:
+                    picture_iou_scores[data_idx,classes[class_idx],metric.__name__] = float(metric(masks_pred[class_idx,:,:], masks[class_idx,:,:]).cpu().detach().numpy())
+    
+    for x, y, lengths, img_ids in iterator:
+        x, y = x.to(self.device), y.to(self.device)
+        loss, y_pred = self.batch_update(x, y, lengths)
+
+        # update loss logs
+        loss_value = loss.item()
+        loss_meter.add(loss_value)
+        loss_logs = {'CrossEntropyLoss': loss_meter.mean}
+        logs.update(loss_logs)
+
+        # update metrics logs
+        metric_value = self.metrics[0].evaluate(y_pred, y)
+        correct_count_meter.add(metric_value.sum().item(),n = metric_value.shape[0])
+
+        # Update Bleu Rouge Scores
+        metric_values = self.metrics[1].evaluate(y_pred, y, img_ids)
+
+    # Only do it for the first metric
+    lowest = {}
+    highest = {}
+    for _class in classes:
+        for metric in metrics:
+            sorted_iou_scores = sorted(filter(lambda x:x[0][1] == _class and x[0][2] == metric.__name__, picture_iou_scores.items()), key = lambda x:x[1])
+            sorted_iou_scores = [(idx, value[0][0], value[1]) for idx, value in enumerate(sorted_iou_scores)]
+            lowest[_class,metric.__name__] = sorted_iou_scores[:top_n]
+            lowest[_class,metric.__name__] = {value[1]:(value[0],value[2]) for value in lowest[_class,metric.__name__]}
+            highest[_class,metric.__name__] = sorted_iou_scores[-1*top_n:]
+            highest[_class,metric.__name__] = {value[1]:(idx,value[2]) for idx, value in enumerate(highest[_class,metric.__name__])}
+
+    lowest_processed = {(_class, metric.__name__):[0 for _ in range(top_n)] for _class in classes for metric in metrics}
+    highest_processed = {(_class, metric.__name__):[0 for _ in range(top_n)] for _class in classes for metric in metrics}
+
+    with tqdm(zip(validation_dataloader,validation_dataloader_org), desc='Inference Round 2', file=sys.stdout, disable=False) as iterator:
+        for data_idx, data in enumerate(iterator):
+            for class_idx, _class in enumerate(classes):
+                for metric in metrics:
+                    if data_idx in lowest[_class,metric.__name__].keys():
+                        img, mask_pred, mask = _get_image_mask(data, model, class_idx)
+                        rank = lowest[_class,metric.__name__][data_idx][0]
+                        metric_value = lowest[_class,metric.__name__][data_idx][1]
+                        lowest_processed[_class,metric.__name__][rank] = (img, mask_pred, mask, metric_value)
+                    
+                    elif data_idx in highest[_class,metric.__name__].keys():
+                        img, mask_pred, mask = _get_image_mask(data, model, class_idx)
+                        rank = highest[_class,metric.__name__][data_idx][0]
+                        metric_value = highest[_class,metric.__name__][data_idx][1]
+                        highest_processed[_class,metric.__name__][rank] = (img, mask_pred, mask, metric_value)
+
+    for rank in range(top_n):
+        _plot_topn(rank, lowest_processed, 'Lowest')
+        _plot_topn(rank, highest_processed, 'Highest')
+
+    log_print(f'Validation completed', logger)

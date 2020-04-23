@@ -57,6 +57,7 @@ class CocoDataset(data.Dataset):
             caption = self.spell(caption)
         tokens = nltk.tokenize.word_tokenize(caption)
         caption = []
+        caption.append(vocab('<start>'))
         caption.extend([vocab(token) for token in tokens])
         caption.append(vocab('<end>'))
         target = torch.Tensor(caption)
