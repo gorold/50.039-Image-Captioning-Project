@@ -267,7 +267,7 @@ def train_model(train_dataloader,
     )
 
     # Record for plotting
-    metric_names = ['accuracy','bleu_1','bleu_2','bleu_3','rouge']
+    metric_names = ['accuracy','bleu_1','bleu_2','bleu_3','bleu_4','rouge']
     losses = {'train':[],'val':[]}
     metric_values = {'train':{name:[] for name in metric_names},'val':{name:[] for name in metric_names}}
 
