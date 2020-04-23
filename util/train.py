@@ -94,7 +94,8 @@ class Epoch(object):
             # Run for 1 epoch
             for x, y, lengths, img_ids in iterator:
                 x, y = x.to(self.device), y.to(self.device)
-                loss, y_pred = self.batch_update(x, y, lengths)
+                input_lengths = [l-1 for l in lengths]
+                loss, y_pred = self.batch_update(x, y, input_lengths)
 
                 # update loss logs
                 loss_value = loss.item()
@@ -157,7 +158,7 @@ class TrainEpoch(Epoch):
 
         features = self.encoder(images) # The encoder generates the features, which is passed into the LSTM as the first input
         predictions, _ = self.decoder(features, captions, lengths)
-        loss = self.loss(predictions, captions)
+        loss = self.loss(predictions, captions[:,1:])
         loss.backward()
         self.optimizer.step()
 
@@ -184,7 +185,7 @@ class ValidEpoch(Epoch):
         with torch.no_grad():
             features = self.encoder(images)
             predictions, _ = self.decoder(features, captions, lengths)
-            loss = self.loss(predictions, captions)
+            loss = self.loss(predictions, captions[:,1:])
         return loss, predictions
 
 def plot(train_losses, val_losses, train_metrics, val_metrics):

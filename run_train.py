@@ -86,10 +86,10 @@ def main(args):
 
     # Loss and optimizer
     loss = nn.CrossEntropyLoss(ignore_index=0)
-    for p in encoder.parameters():
-        p.requires_grad = False
-    # optimizer = torch.optim.Adam(list(encoder.parameters())+list(decoder.parameters()), lr=args.learning_rate)
-    optimizer = torch.optim.Adam(decoder.parameters(), lr=args.learning_rate)
+    # for p in encoder.parameters():
+    #     p.requires_grad = False
+    optimizer = torch.optim.Adam(list(encoder.parameters())+list(decoder.parameters()), lr=args.learning_rate)
+    # optimizer = torch.optim.Adam(decoder.parameters(), lr=args.learning_rate)
 
     train_model(train_dataloader = train_dataloader,
                 validation_dataloader = validation_dataloader,
