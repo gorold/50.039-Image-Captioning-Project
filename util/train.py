@@ -96,7 +96,7 @@ class Epoch(object):
                 x, y = x.to(self.device), y.to(self.device)
                 input_lengths = [l-1 for l in lengths]
                 loss, y_pred = self.batch_update(x, y, input_lengths)
-
+                y = y[:,1:] # Offset the tensor to exclude start token for the calculation of metrics
                 # update loss logs
                 loss_value = loss.item()
                 loss_meter.add(loss_value)
