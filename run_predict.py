@@ -67,7 +67,7 @@ def main(args):
                             shuffle=False, num_workers=args.num_workers)
 
     # Load Model
-    encoder, decoder = torch.load(os.path.join('C:\\Users\\lohzy\\Desktop\\dl-proj\\model\\best_model_dl.pth'), map_location = device)
+    encoder, decoder = torch.load(args.model_path, map_location = device)
     
     # Metrics
     metrics = [
@@ -98,8 +98,7 @@ if __name__ == '__main__':
     parser.add_argument('--val_dir', type=str, default='data/coco2014/val2014', help='directory for resized images')
     parser.add_argument('--train_caption_path', type=str, default='data/coco2014/trainval_coco2014_captions/captions_train2014.json', help='path for train annotation json file')
     parser.add_argument('--val_caption_path', type=str, default='data/coco2014/trainval_coco2014_captions/captions_val2014.json', help='path for train annotation json file')
-    parser.add_argument('--log_step', type=int , default=10, help='step size for prining log info')
-    parser.add_argument('--save_step', type=int , default=1000, help='step size for saving trained models')
+    parser.add_argument('--model_path', type=int , default='model/best_model_dl.pth', help='Path to load model')
     
     # Model parameters
     parser.add_argument('--embed_size', type=int , default=300, help='dimension of word embedding vectors')

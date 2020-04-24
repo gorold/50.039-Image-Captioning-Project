@@ -90,7 +90,7 @@ def main(args):
     #     p.requires_grad = False
     optimizer = torch.optim.Adam(list(encoder.parameters())+list(decoder.parameters()), lr=args.learning_rate)
     # optimizer = torch.optim.Adam(decoder.parameters(), lr=args.learning_rate)
-
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, 10, T_mult=1, eta_min=0)
     train_model(train_dataloader = train_dataloader,
                 validation_dataloader = validation_dataloader,
                 model = [encoder,decoder],
@@ -98,7 +98,7 @@ def main(args):
                 train_metrics = train_metrics,
                 val_metrics = val_metrics,
                 optimizer = optimizer,
-                scheduler = None,
+                scheduler = scheduler,
                 batch_size = args.batch_size,
                 num_epochs = args.num_epochs,
                 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
@@ -161,7 +161,7 @@ if __name__ == '__main__':
     parser.add_argument('--att_size', type=int, default=256, help='dimension of attension inner dimension')
     parser.add_argument('--feature_size', type=int, default=1280, help='dimension of CNN output')
     
-    parser.add_argument('--num_epochs', type=int, default=5)
+    parser.add_argument('--num_epochs', type=int, default=10)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--num_workers', type=int, default=10)
     parser.add_argument('--learning_rate', type=float, default=0.001)
