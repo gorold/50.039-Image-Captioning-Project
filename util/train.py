@@ -7,6 +7,9 @@ import datetime as dt
 import sys
 
 from tqdm import tqdm
+from copy import deepcopy
+from util.metrics import caption_list_to_words
+from PIL import Image
 
 def log_print(text, logger, log_only = False):
     if not log_only:
@@ -317,138 +320,105 @@ def train_model(train_dataloader,
 
 def validate_and_plot(validation_dataloader,
                     validation_dataloader_org,
-                    model,
+                    coco,
+                    validation_path,
+                    encoder,
+                    decoder,
                     metrics,
-                    top_n = 20,
+                    metrics_to_plot = ['Accuracy','Bleu_1','Bleu_2','Bleu_3','Bleu_4','Rouge'],
+                    top_n = 2,
                     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
                     logger = None,
                     verbose = True,
                     plots_save_path = os.path.join(os.getcwd(),'prediction_plots'),
-                    prefix = 'Val',
-                    threshold = 0.5
+                    prefix = 'Val'
                     ):
     # Plots the top N images in terms of Bleu Scores scores
-
-    # Helper function to return the image, the predicted mask and the actual mask for any datapoint
-    def _get_image_mask(data, model, class_idx):
-        aug_data, org_data = data
-        inputs = aug_data[0].to(device)
-        masks_pred = model(inputs)
-
-        img = org_data[0][0].detach().cpu()
-        mask = aug_data[1][0][class_idx].cpu()
-        mask_pred = masks_pred[0][class_idx].cpu()
-        mask_pred = np.where(mask_pred > threshold,1,0)
-        trans = torchvision.transforms.ToPILImage()
-        
-        img = np.array(trans(img))
-        return img, mask_pred, mask
+    def _format_string(blue_rouge):
+        format_bleu_rouge = ''
+        for key, v in bleu_rouge.items():
+            format_bleu_rouge += f'{key}: {v:.2e}\n'
+        return format_bleu_rouge
 
     # Helper function to plot mask and original pictures
-    def _plot_topn(rank, metric_info, low_high_str):
-        fig, ax = plt.subplots(2*len(metrics),len(classes), figsize=(7*len(classes), 10*len(metrics)))
-        for class_idx, _class in enumerate(classes):
-            for m_idx, metric in enumerate(metrics):
+    def _plot_topn(start_rank, rank_split, rank_processed, metrics_to_plot, low_high_str):
+        cols = len(metrics_to_plot)
+        fig, ax = plt.subplots(rank_split,cols, figsize=(6*cols, 4*rank_split))
+        for i in range(rank_split):
+            for m_idx, metric in enumerate(metrics_to_plot):
                 # Plot the Ground Truth
-                if len(classes) > 1:
-                    ax[m_idx*2,class_idx].imshow(metric_info[_class,metric.__name__][rank][0])
-                    ax[m_idx*2,class_idx].imshow(metric_info[_class,metric.__name__][rank][2], alpha=0.3, cmap='gray')
-                    ax[m_idx*2,class_idx].set_title(f'{_class} Ground Truth {metric.__name__}:{metric_info[_class,metric.__name__][rank][3]:.3f}', fontsize=12)
-
-                    # Plot the picture and the masks
-                    ax[m_idx*2+1,class_idx].imshow(metric_info[_class,metric.__name__][rank][0])
-                    ax[m_idx*2+1,class_idx].imshow(metric_info[_class,metric.__name__][rank][1], alpha=0.3, cmap='gray')
-                    ax[m_idx*2+1,class_idx].set_title(f'{_class} Prediction {metric.__name__}:{metric_info[_class,metric.__name__][rank][3]:.3f}', fontsize=12)
-                else:
-                    ax[m_idx*2].imshow(metric_info[_class,metric.__name__][rank][0])
-                    ax[m_idx*2].imshow(metric_info[_class,metric.__name__][rank][2], alpha=0.3, cmap='gray')
-                    ax[m_idx*2].set_title(f'{_class} Ground Truth {metric.__name__}:{metric_info[_class,metric.__name__][rank][3]:.3f}', fontsize=12)
-
-                    # Plot the picture and the masks
-                    ax[m_idx*2+1].imshow(metric_info[_class,metric.__name__][rank][0])
-                    ax[m_idx*2+1].imshow(metric_info[_class,metric.__name__][rank][1], alpha=0.3, cmap='gray')
-                    ax[m_idx*2+1].set_title(f'{_class} Prediction {metric.__name__}:{metric_info[_class,metric.__name__][rank][3]:.3f}', fontsize=12)
+                ax[i,m_idx].imshow(rank_processed[metric][start_rank+i][0])
+                ax[i,m_idx].set_xlabel(f'GT: {rank_processed[metric][start_rank+i][2]}\nPredicted: {rank_processed[metric][start_rank+i][1]}')
+                ax[i,m_idx].set_title(f'{metric}:{rank_processed[metric][start_rank+i][3]:.3f}', fontsize=12)
                 
         current_time = str(dt.datetime.now())[0:10].replace('-','_')
         if not os.path.exists(os.path.join(plots_save_path,current_time)):
             os.makedirs(os.path.join(plots_save_path,current_time))
-        fig.suptitle(f'{low_high_str} {rank+1}', fontsize=20)
-        plt.savefig(os.path.join(plots_save_path,current_time, f"{prefix}_{low_high_str}_{rank+1}.png"))
+        fig.suptitle(f'{low_high_str} {start_rank} to {start_rank+rank_split}', fontsize=20)
+        fig.tight_layout(pad = 5.0)
+        plt.savefig(os.path.join(plots_save_path,current_time, f"{prefix}_{low_high_str}_{start_rank+rank_split}.png"))
         plt.close()
-        log_print(f'Plot {low_high_str} {rank+1} saved', logger)
+        log_print(f'Plot {low_high_str} {start_rank+rank_split} saved', logger)
 
     log_print('Running Inference...', logger)
-    picture_iou_scores = OrderedDict()
+    picture_scores = {}
 
     if torch.cuda.is_available():
-        model.cuda()
+        encoder.cuda()
+        decoder.cuda()
 
-    with tqdm(validation_dataloader, desc='Inference Round 1', file=sys.stdout, disable=False) as iterator:
-        for data_idx, data in enumerate(iterator):
-            inputs = data[0].to(device)
-            masks_pred = model(inputs)
+    with tqdm(validation_dataloader, desc='Inference', file=sys.stdout, disable=False) as iterator:
+        for _, (x, y, lengths, img_ids) in enumerate(iterator):
+            assert x.shape[0] == 1, 'Batch size must be 1'
+            x, y = x.to(device), y.to(device)
+            with torch.no_grad():
+                features = encoder(x)
+                y_pred, _ = decoder.beam_search(features) # Note y_pred is a list
+            y_pred = y_pred[1:-1]
+            y = y[:,1:-1] # Offset the tensor to exclude start token for the calculation of metrics
+            accuracy = metrics[0].evaluate(y_pred, y.tolist()[0]) # Compute accuracy
+            bleu_rouge_scores = metrics[1].evaluate([y_pred], y, img_ids)
+            
+            bleu_rouge = {'Accuracy':accuracy,
+                            'Bleu_1': bleu_rouge_scores[0],
+                            'Bleu_2': bleu_rouge_scores[1],
+                            'Bleu_3': bleu_rouge_scores[2],
+                            'Bleu_4': bleu_rouge_scores[3],
+                            'Rouge': bleu_rouge_scores[4]}
 
-            # Make sure batch size is 1
-            assert len(inputs) == 1
-            masks = data[1][0].to(device)
-            masks_pred = masks_pred[0]
-            if masks_pred.shape[0] != len(classes):
-                raise Exception('Your model predicts more classes than the number of classes specified')
+            picture_scores[img_ids[0]] = deepcopy(bleu_rouge), caption_list_to_words([y_pred],decoder.vocab)[0], caption_list_to_words(y.tolist(),decoder.vocab)[0]
 
-            for class_idx in range(len(classes)):
-                for metric in metrics:
-                    picture_iou_scores[data_idx,classes[class_idx],metric.__name__] = float(metric(masks_pred[class_idx,:,:], masks[class_idx,:,:]).cpu().detach().numpy())
-    
-    for x, y, lengths, img_ids in iterator:
-        x, y = x.to(self.device), y.to(self.device)
-        loss, y_pred = self.batch_update(x, y, lengths)
-
-        # update loss logs
-        loss_value = loss.item()
-        loss_meter.add(loss_value)
-        loss_logs = {'CrossEntropyLoss': loss_meter.mean}
-        logs.update(loss_logs)
-
-        # update metrics logs
-        metric_value = self.metrics[0].evaluate(y_pred, y)
-        correct_count_meter.add(metric_value.sum().item(),n = metric_value.shape[0])
-
-        # Update Bleu Rouge Scores
-        metric_values = self.metrics[1].evaluate(y_pred, y, img_ids)
-
-    # Only do it for the first metric
     lowest = {}
     highest = {}
-    for _class in classes:
-        for metric in metrics:
-            sorted_iou_scores = sorted(filter(lambda x:x[0][1] == _class and x[0][2] == metric.__name__, picture_iou_scores.items()), key = lambda x:x[1])
-            sorted_iou_scores = [(idx, value[0][0], value[1]) for idx, value in enumerate(sorted_iou_scores)]
-            lowest[_class,metric.__name__] = sorted_iou_scores[:top_n]
-            lowest[_class,metric.__name__] = {value[1]:(value[0],value[2]) for value in lowest[_class,metric.__name__]}
-            highest[_class,metric.__name__] = sorted_iou_scores[-1*top_n:]
-            highest[_class,metric.__name__] = {value[1]:(idx,value[2]) for idx, value in enumerate(highest[_class,metric.__name__])}
+    for metric in metrics_to_plot:
+        sorted_scores = sorted(picture_scores.items(), key = lambda x:x[1][0][metric])
+        sorted_scores = [(idx, value) for idx, value in enumerate(sorted_scores)]
+        lowest[metric] = sorted_scores[:top_n]
+        lowest[metric] = {value[1][0]:(value[0],value[1][1][0][metric],value[1][1][1],value[1][1][2]) for value in lowest[metric]}
+        highest[metric] = sorted_scores[-1*top_n:]
+        highest[metric] = {value[1][0]:(top_n-idx-1,value[1][1][0][metric],value[1][1][1],value[1][1][2]) for idx, value in enumerate(highest[metric])}
 
-    lowest_processed = {(_class, metric.__name__):[0 for _ in range(top_n)] for _class in classes for metric in metrics}
-    highest_processed = {(_class, metric.__name__):[0 for _ in range(top_n)] for _class in classes for metric in metrics}
+    lowest_processed = {metric:[0 for _ in range(top_n)] for metric in metrics_to_plot}
+    highest_processed = {metric:[0 for _ in range(top_n)] for metric in metrics_to_plot}
 
-    with tqdm(zip(validation_dataloader,validation_dataloader_org), desc='Inference Round 2', file=sys.stdout, disable=False) as iterator:
-        for data_idx, data in enumerate(iterator):
-            for class_idx, _class in enumerate(classes):
-                for metric in metrics:
-                    if data_idx in lowest[_class,metric.__name__].keys():
-                        img, mask_pred, mask = _get_image_mask(data, model, class_idx)
-                        rank = lowest[_class,metric.__name__][data_idx][0]
-                        metric_value = lowest[_class,metric.__name__][data_idx][1]
-                        lowest_processed[_class,metric.__name__][rank] = (img, mask_pred, mask, metric_value)
-                    
-                    elif data_idx in highest[_class,metric.__name__].keys():
-                        img, mask_pred, mask = _get_image_mask(data, model, class_idx)
-                        rank = highest[_class,metric.__name__][data_idx][0]
-                        metric_value = highest[_class,metric.__name__][data_idx][1]
-                        highest_processed[_class,metric.__name__][rank] = (img, mask_pred, mask, metric_value)
+    for metric in metrics_to_plot:
+        for image_id in lowest[metric].keys():
+            path = coco.loadImgs(image_id)[0]['file_name']
+            img = np.array(Image.open(os.path.join(validation_path, path)).convert('RGB'))
+            rank, metric_value, predicted_caption, gt_caption = lowest[metric][image_id]
+            lowest_processed[metric][rank] = (img, predicted_caption, gt_caption, metric_value)
+        
+        for image_id in highest[metric].keys():
+            path = coco.loadImgs(image_id)[0]['file_name']
+            img = np.array(Image.open(os.path.join(validation_path, path)).convert('RGB'))
+            rank, metric_value, predicted_caption, gt_caption = highest[metric][image_id]
+            highest_processed[metric][rank] = (img, predicted_caption, gt_caption, metric_value)
 
-    for rank in range(top_n):
-        _plot_topn(rank, lowest_processed, 'Lowest')
-        _plot_topn(rank, highest_processed, 'Highest')
+    rank_split = 5
+    for plot_idx in range(top_n//rank_split):
+        start_rank = plot_idx*rank_split
+        end_rank = min(plot_idx*rank_split+rank_split,top_n)
+        _plot_topn(start_rank, end_rank-start_rank,lowest_processed, metrics_to_plot, 'Lowest')
+        _plot_topn(start_rank, end_rank-start_rank,highest_processed, metrics_to_plot, 'Highest')
 
     log_print(f'Validation completed', logger)

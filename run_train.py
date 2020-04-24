@@ -58,7 +58,7 @@ def main(args):
                              shuffle=True, num_workers=args.num_workers)
 
     validation_dataloader = get_loader(args.val_dir, val_coco, vocab, 
-                             transform, data_augmentations, args.batch_size,
+                             transform, None, args.batch_size,
                              shuffle=False, num_workers=args.num_workers)
 
     # Load word embeddings
