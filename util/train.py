@@ -235,6 +235,7 @@ def train_model(train_dataloader,
                 scheduler = None,
                 batch_size = 1,
                 num_epochs = 10,
+                encoder_unfreeze_epoch = 3,
                 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
                 logger = None,
                 verbose = True,
@@ -281,8 +282,16 @@ def train_model(train_dataloader,
     start_time = dt.datetime.now()
     log_print('Training model...', logger)
 
+    encoder_frozen = True
     for epoch in range(num_epochs):
+        if encoder_frozen and epoch == encoder_unfreeze_epoch:
+            for p in model[0].parameters():
+                p.requires_grad = True
+            encoder_frozen = False
+            log_print(f'Encoder Unfrozen', logger)
+        
         log_print(f'\nEpoch: {epoch}', logger)
+        
 
         train_logs = train_epoch.run(train_dataloader)
         losses['train'].append(train_logs['loss'])
