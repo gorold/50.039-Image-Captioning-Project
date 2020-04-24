@@ -81,10 +81,10 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type=str, default='models/' , help='path for saving trained models')
     parser.add_argument('--crop_size', type=int, default=224 , help='size for randomly cropping images')
     parser.add_argument('--vocab_path', type=str, default='data/vocab.pkl', help='path for vocabulary wrapper')
-    parser.add_argument('--train_dir', type=str, default='data/coco2014/train2014', help='directory for resized images')
-    parser.add_argument('--val_dir', type=str, default='data/coco2014/val2014', help='directory for resized images')
-    parser.add_argument('--train_caption_path', type=str, default='data/coco2014/trainval_coco2014_captions/captions_train2014.json', help='path for train annotation json file')
-    parser.add_argument('--val_caption_path', type=str, default='data/coco2014/trainval_coco2014_captions/captions_val2014.json', help='path for train annotation json file')
+    parser.add_argument('--train_dir', type=str, default='data/train2014', help='directory for resized images')
+    parser.add_argument('--val_dir', type=str, default='data/val2014', help='directory for resized images')
+    parser.add_argument('--train_caption_path', type=str, default='data/annotations/captions_train2014.json', help='path for train annotation json file')
+    parser.add_argument('--val_caption_path', type=str, default='data/annnotations/captions_val2014.json', help='path for train annotation json file')
     parser.add_argument('--saved_model_path', type=str , default='model/best_model_dl.pth', help='Path to load model')
     
     # Model parameters
