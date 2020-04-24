@@ -86,11 +86,15 @@ def main(args):
 
     # Loss and optimizer
     loss = nn.CrossEntropyLoss(ignore_index=0)
-    # for p in encoder.parameters():
-    #     p.requires_grad = False
-    optimizer = torch.optim.Adam(list(encoder.parameters())+list(decoder.parameters()), lr=args.learning_rate)
-    # optimizer = torch.optim.Adam(decoder.parameters(), lr=args.learning_rate)
+    for p in encoder.parameters():
+        p.requires_grad = False
+    optimizer = torch.optim.Adam([
+        {'params':encoder.parameters(), 'lr':0.5*args.learning_rate},
+        {'params':decoder.parameters()}
+    ], lr=args.learning_rate)
+    # optimizer = torch.optim.Adam(encoder.parameters(), lr=args.learning_rate)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, 10, T_mult=1, eta_min=0)
+    encoder_unfreeze_epoch = 2
     train_model(train_dataloader = train_dataloader,
                 validation_dataloader = validation_dataloader,
                 model = [encoder,decoder],
@@ -101,6 +105,7 @@ def main(args):
                 scheduler = scheduler,
                 batch_size = args.batch_size,
                 num_epochs = args.num_epochs,
+                encoder_unfreeze_epoch = encoder_unfreeze_epoch,
                 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
                 logger = logging,
                 verbose = True,
