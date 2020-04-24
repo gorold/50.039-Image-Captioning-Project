@@ -319,7 +319,6 @@ def train_model(train_dataloader,
     log_print('Plot Saved', logger)
 
 def validate_and_plot(validation_dataloader,
-                    validation_dataloader_org,
                     coco,
                     validation_path,
                     encoder,

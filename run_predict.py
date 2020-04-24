@@ -35,8 +35,6 @@ def main(args):
     # Create model directory
     if not os.path.exists(args.model_path):
         os.makedirs(args.model_path)
-
-    data_augmentations = get_augmentations(args.crop_size)
     
     # Image preprocessing, normalization for the pretrained resnet
     transform = transforms.Compose([
@@ -53,21 +51,11 @@ def main(args):
     
     # Build data loaders
     validation_dataloader = get_loader(args.val_dir, val_coco, vocab, 
-                             transform, data_augmentations, args.batch_size,
-                             shuffle=False, num_workers=args.num_workers)
-
-    transform = transforms.Compose([
-        transforms.ToPILImage(),
-        transforms.Resize((args.crop_size,args.crop_size)),
-        transforms.ToTensor(),
-        ])
-
-    validation_dataloader_org = get_loader(args.val_dir, val_coco, vocab, 
-                            transform, None, args.batch_size,
-                            shuffle=False, num_workers=args.num_workers)
+                             transform, None, args.batch_size,
+                             shuffle=True, num_workers=args.num_workers)
 
     # Load Model
-    encoder, decoder = torch.load(args.model_path, map_location = device)
+    encoder, decoder = torch.load(args.saved_model_path, map_location = device)
     
     # Metrics
     metrics = [
@@ -76,7 +64,6 @@ def main(args):
     ]
 
     validate_and_plot(validation_dataloader,
-                    validation_dataloader_org,
                     val_coco,
                     args.val_dir,
                     encoder,
@@ -98,7 +85,7 @@ if __name__ == '__main__':
     parser.add_argument('--val_dir', type=str, default='data/coco2014/val2014', help='directory for resized images')
     parser.add_argument('--train_caption_path', type=str, default='data/coco2014/trainval_coco2014_captions/captions_train2014.json', help='path for train annotation json file')
     parser.add_argument('--val_caption_path', type=str, default='data/coco2014/trainval_coco2014_captions/captions_val2014.json', help='path for train annotation json file')
-    parser.add_argument('--model_path', type=int , default='model/best_model_dl.pth', help='Path to load model')
+    parser.add_argument('--saved_model_path', type=str , default='model/best_model_dl.pth', help='Path to load model')
     
     # Model parameters
     parser.add_argument('--embed_size', type=int , default=300, help='dimension of word embedding vectors')
