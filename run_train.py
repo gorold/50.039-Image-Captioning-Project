@@ -41,7 +41,7 @@ def main(args):
     # Image preprocessing, normalization for the pretrained resnet
     transform = transforms.Compose([
         transforms.ToPILImage(),
-        transforms.Resize(args.crop_size),
+        transforms.Resize((args.crop_size,args.crop_size)),
         transforms.ToTensor(), 
         transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
         ])
