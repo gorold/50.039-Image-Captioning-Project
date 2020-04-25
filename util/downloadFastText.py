@@ -114,7 +114,7 @@ def download_model(lang_id, filepath = os.getcwd(), if_exists='strict', ):
         os.mkdir(f"{filepath}/wordEmbeddings")
 
     file_name = f"{filepath}/wordEmbeddings/cc.{lang_id}.300.bin"
-    gz_file_name = f"{filepath}/wordEmbeddings/cc.{lang_id}.300.bin.gz"
+    gz_file_name = f"cc.{lang_id}.300.bin.gz"
 
     if os.path.isfile(file_name):
         if if_exists == 'ignore':

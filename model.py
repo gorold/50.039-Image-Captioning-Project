@@ -7,6 +7,7 @@ import nltk
 
 from torch.nn.utils.rnn import pack_sequence, pad_packed_sequence, pack_padded_sequence
 from build_vocab import encode_input_tensor, encode_target_tensor
+from efficientnet_pytorch import EfficientNet
 
 class Attention(nn.Module):
     """Additive Attention"""
@@ -42,13 +43,19 @@ class EncoderCNN(nn.Module):
     def __init__(self):
         """Load the pretrained ResNet-152 and replace top fc layer."""
         super(EncoderCNN, self).__init__()
-        resnet = models.resnet152(pretrained=True)
-        modules = list(resnet.children())[:-2]      # Delete the last fc layer and adaptive pooling.
-        self.resnet = nn.Sequential(*modules)
+        net = EfficientNet.from_pretrained('efficientnet-b0')
+        net._avg_pooling = nn.Identity()
+        net._dropout = nn.Identity()
+        net._fc = nn.Identity()
+
+        # resnet = models.resnet152(pretrained=True)
+        # modules = list(resnet.children())[:-2]      # Delete the last fc layer and adaptive pooling.
+        # net = nn.Sequential(*modules)
+        self.net = net
         
     def forward(self, images):
         """Extract feature maps from input images."""
-        features = self.resnet(images)
+        features = self.net(images).view(-1,1280,7,7)
         features = F.normalize(features, p=2, dim=1) # L2 normalization over channels
         return features
 
@@ -125,7 +132,7 @@ class DecoderRNN(nn.Module):
         
 #         # Predict Words
         lstm2_out = pad_packed_sequence(lstm2_out, batch_first=True)[0]
-        logits = self.linear(lstm2_out)
+        logits = self.linear(lstm2_out).transpose(1,2)
         
         return logits, (han, can, hln, cln)        
    
@@ -140,6 +147,7 @@ class DecoderRNN(nn.Module):
             
         Returns
         -------
+        tensor (long)
         """
         batch_size = features.shape[0]
         lengths = [1 for _ in range(batch_size)]
@@ -153,21 +161,8 @@ class DecoderRNN(nn.Module):
             outputs = torch.cat((outputs, prev_word), dim=1)
             done[prev_word == self.vocab('<end>')] = True
         return outputs
-            
-        
-#         sampled_ids = []
-#         inputs = features.unsqueeze(1)
-#         for i in range(self.max_seg_length):
-#             hiddens, states = self.lstm(inputs, states)          # hiddens: (batch_size, 1, hidden_size)
-#             outputs = self.linear(hiddens.squeeze(1))            # outputs:  (batch_size, vocab_size)
-#             _, predicted = outputs.max(1)                        # predicted: (batch_size)
-#             sampled_ids.append(predicted)
-#             inputs = self.embed(predicted)                       # inputs: (batch_size, embed_size)
-#             inputs = inputs.unsqueeze(1)                         # inputs: (batch_size, 1, embed_size)
-#         sampled_ids = torch.stack(sampled_ids, 1)                # sampled_ids: (batch_size, max_seq_length)
-#         return sampled_ids
     
-    def beam_search(self, features, k=5):
+    def beam_search(self, features, k=5, max_seq_length = 200):
         """
         Generate a caption using beam search. At evey step, maintain the top k candidates. If the next most probable word is the EOS, store the sequence.
         Beam search is deterministic. You will not get different results from running this twice.
@@ -185,7 +180,7 @@ class DecoderRNN(nn.Module):
         str
             Candidate sentence with highest joint probability
         """
-        assert features.shape[0] == 1
+        assert features.shape[0] == 1, 'Batch size has to be 1'
         self.eval()
         candidates = []
         temp_candidates = [[[self.vocab('<start>')], None, None, None, None, 1]]
@@ -198,6 +193,7 @@ class DecoderRNN(nn.Module):
                     prev_word[0,0] = sentence[-1]
                     lengths = [1]
                     logits, (hans, cans, hlns, clns) = self(features, prev_word, lengths, ha0, ca0, hl0, cl0)
+                    logits = logits.permute(0,2,1)
                     softmax_probs = F.softmax(logits, dim=2)
                     top_values, top_indices = softmax_probs.topk(k-len(candidates))
                     for i in range(k - len(candidates)):
@@ -205,7 +201,7 @@ class DecoderRNN(nn.Module):
                         curr_idx = int(top_indices[0,0,i])             
                         new_sentence = [*sentence] + [curr_idx]
                         new_prob = prob * curr_prob
-                        if curr_idx == self.vocab('<end>'):
+                        if curr_idx == self.vocab('<end>') or len(new_sentence) >= max_seq_length:
                             new_final_candidates.append([new_sentence, curr_prob])
                         else:
                             new_temp_candidates.append([new_sentence, hans, cans, hlns, clns, curr_prob])
@@ -215,4 +211,35 @@ class DecoderRNN(nn.Module):
                 temp_candidates = new_temp_candidates[:k-len(candidates)]
             candidates.sort(key=lambda x: x[1])
         return candidates[-1]
-           
+
+    def sample_caption(self, features):
+        """
+        Generate sample sentence by feeding the output of the CNN into the LSTM continuously until the EOS is returned.
+        inputs:
+            X: Packed sequence of [input]
+            type: torch.nn.utils.rnn.PackedSequence
+
+            sample: boolean flag on whether to sample or not i.e. to test
+            type: bool
+
+        returns:
+            output_caption: Output Caption of Image
+            type: str
+        """
+        assert features.shape[0] == 1, 'Batch size has to be 1'
+        self.eval()
+        candidates = []
+        sentence, hans, cans, hlns, clns = [self.vocab('<start>')], None, None, None, None
+        with torch.no_grad():
+            for idx in range(200):
+                prev_word = torch.zeros(1,1).long().to(self.device)
+                prev_word[0,0] = sentence[-1]
+                lengths = [1]
+                logits, (hans, cans, hlns, clns) = self(features, prev_word, lengths, hans, cans, hlns, clns)
+                softmax_probs = F.softmax(logits, dim=1)
+                next_word_idx = np.random.choice(a = len(self.vocab), size = 1, p = softmax_probs.squeeze().cpu().numpy()).item()
+                sentence = [*sentence] + [next_word_idx]
+                if next_word_idx == self.vocab('<end>'):
+                    break
+        sentence = ' '.join([self.vocab.idx2word[idx] for idx in sentence[1:]])
+        return sentence
