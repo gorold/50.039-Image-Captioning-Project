@@ -25,6 +25,8 @@ def load_image(image_path, transform=None):
 def get_caption(image_path, model_path, vocab_path = 'data/vocab.pkl'):
 
     # Device
+    if not torch.cuda.is_available():
+        raise Exception("Please run the GUI on a device with GPU")
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Image preprocessing
@@ -38,9 +40,9 @@ def get_caption(image_path, model_path, vocab_path = 'data/vocab.pkl'):
         vocab = pickle.load(f)
 
     # Build models
-    model = torch.load(model_path)
-    encoder = model[0]
-    decoder = model[1]
+    model = torch.load(model_path, map_location= device)
+    encoder = model[0].to(device).eval()
+    decoder = model[1].to(device).eval()
 
     # Prepare an image
     image = load_image(image_path, transform)
@@ -48,6 +50,7 @@ def get_caption(image_path, model_path, vocab_path = 'data/vocab.pkl'):
     
     # Generate an caption from the image
     feature = encoder(image_tensor)
+    feature = feature.to(device)
     y_pred, _ = decoder.beam_search(feature)
 
     # Convert word_ids to words
