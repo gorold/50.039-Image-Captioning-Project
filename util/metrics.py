@@ -54,7 +54,7 @@ def compute_accuracy_list(y_pred, y):
         for word_idx in gt_caption:
             if word_idx in predicted_caption:
                 counts += 1
-        results.append(counts/len(y))
+        results.append(counts/len(gt_caption))
     return np.mean(results)
 
 # Modules

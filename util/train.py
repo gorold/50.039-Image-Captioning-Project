@@ -443,7 +443,6 @@ def greedy_prediction(validation_dataloader,
 
     log_print('Running Inference...', logger)
     results = []
-    metric_results = []
 
     if torch.cuda.is_available():
         encoder.cuda()
@@ -452,8 +451,8 @@ def greedy_prediction(validation_dataloader,
     y_preds = []
     image_id_list = []
     with tqdm(validation_dataloader, desc='Inference', file=sys.stdout, disable=False) as iterator:
-        for _, (x, y, lengths, img_ids) in enumerate(iterator):
-            x, y = x.to(device), y.to(device)
+        for _, (x, y, _, img_ids) in enumerate(iterator):
+            x = x.to(device)
             with torch.no_grad():
                 features = encoder(x)
                 y_pred = decoder.sample(features) # Note y_pred is a list
