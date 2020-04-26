@@ -66,7 +66,7 @@ def display_page(pathname):
         else:
             filepath = glob.glob(f'{cwd}/GUI/assets/static/*')[0]
             test_base64 = base64.b64encode(open(filepath, 'rb').read()).decode('ascii')
-            sentence = get_caption(filepath, model_path = "model/best_model (2).pth")
+            sentence = get_caption(filepath, model_path = "model/best_model_en.pth")
             output = html.Div(children = [html.H2(children = f'{sentence}', style={'textAlign': 'center'} ), 
                                           html.Img(id = 'output-image', src = f'data:image/png;base64,{test_base64}', style={'width': '40%', 'height': 'auto', 'display': 'block', 'margin-left': 'auto', 'margin-right': 'auto'})])
             html_output = html.Div(id = 'left-panel', children = [dcc.Loading(children = [dcc.Link("Return to Homepage", href = '/'), output], id="loading-2", type="circle")])
