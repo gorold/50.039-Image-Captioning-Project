@@ -13,7 +13,7 @@ from autocorrect import Speller
 
 class CocoDataset(data.Dataset):
     """COCO Custom Dataset compatible with torch.utils.data.DataLoader."""
-    def __init__(self, root, coco, vocab, transform=None, data_augmentations = None, spell = None):
+    def __init__(self, root, coco, vocab, transform=None, data_augmentations = None, spell = None, test = False, limit = None):
         """Set the path for images, captions and vocabulary wrapper.
         
         Args:
@@ -29,39 +29,62 @@ class CocoDataset(data.Dataset):
         self.data_augmentations = data_augmentations
         self.transform = transform
         self.spell = spell
+        self.test = test
 
         # Clean up captions
-        invalid_caption_ids = [id for id in self.coco.anns.keys() if self.coco.anns[id]['caption'] == 'I am unable to see the image above.']
-        self.ids = [id for id in self.ids if id not in invalid_caption_ids]
+        if not test:
+            invalid_caption_ids = [id for id in self.coco.anns.keys() if self.coco.anns[id]['caption'] == 'I am unable to see the image above.']
+            self.ids = [id for id in self.ids if id not in invalid_caption_ids]
+        else:
+            self.ids = list(coco.imgs.keys())
+
+        if limit is not None:
+            self.ids = self.ids[:limit]
 
     def __getitem__(self, index):
-        """Returns one data pair (image and caption)."""
-        coco = self.coco
-        vocab = self.vocab
-        ann_id = self.ids[index]
-        caption = coco.anns[ann_id]['caption']
-        img_id = coco.anns[ann_id]['image_id']
-        path = coco.loadImgs(img_id)[0]['file_name']
+        if not self.test:
+            """Returns one data pair (image and caption)."""
+            coco = self.coco
+            vocab = self.vocab
+            ann_id = self.ids[index]
+            caption = coco.anns[ann_id]['caption']
+            img_id = coco.anns[ann_id]['image_id']
+            path = coco.loadImgs(img_id)[0]['file_name']
 
-        image = np.array(Image.open(os.path.join(self.root, path)).convert('RGB'))
-        if self.data_augmentations is not None:
-            data = {"image": image}
-            data = self.data_augmentations(**data)
-            image = data['image']
-        if self.transform is not None:
-            image = self.transform(image)
+            image = np.array(Image.open(os.path.join(self.root, path)).convert('RGB'))
+            if self.data_augmentations is not None:
+                data = {"image": image}
+                data = self.data_augmentations(**data)
+                image = data['image']
+            if self.transform is not None:
+                image = self.transform(image)
 
-        # Convert caption (string) to word ids.
-        caption = str(caption).lower()
-        if self.spell is not None:
-            caption = self.spell(caption)
-        tokens = nltk.tokenize.word_tokenize(caption)
-        caption = []
-        caption.append(vocab('<start>'))
-        caption.extend([vocab(token) for token in tokens])
-        caption.append(vocab('<end>'))
-        target = torch.Tensor(caption)
-        return image, target, img_id
+            # Convert caption (string) to word ids.
+            caption = str(caption).lower()
+            if self.spell is not None:
+                caption = self.spell(caption)
+            tokens = nltk.tokenize.word_tokenize(caption)
+            caption = []
+            caption.append(vocab('<start>'))
+            caption.extend([vocab(token) for token in tokens])
+            caption.append(vocab('<end>'))
+            target = torch.Tensor(caption)
+            return image, target, img_id
+        else:
+            coco = self.coco
+            vocab = self.vocab
+            img_id = self.ids[index]
+            path = coco.loadImgs(img_id)[0]['file_name']
+
+            image = np.array(Image.open(os.path.join(self.root, path)).convert('RGB'))
+            if self.data_augmentations is not None:
+                data = {"image": image}
+                data = self.data_augmentations(**data)
+                image = data['image']
+            if self.transform is not None:
+                image = self.transform(image)
+
+            return image, '', img_id
 
     def __len__(self):
         return len(self.ids)
@@ -97,7 +120,17 @@ def collate_fn(data):
         targets[i, :end] = cap[:end]
     return images, targets, lengths, img_ids
 
-def get_loader(root, coco, vocab, transform, data_augmentations, batch_size, shuffle, num_workers):
+def test_collate_fn(data):
+    # Sort a data list by caption length (descending order).
+    data.sort(key=lambda x: len(x[1]), reverse=True)
+    images, captions, img_ids = zip(*data)
+
+    # Merge images (from tuple of 3D tensor to 4D tensor).
+    images = torch.stack(images, 0)
+
+    return images, '', 0, img_ids
+
+def get_loader(root, coco, vocab, transform, data_augmentations, batch_size, shuffle, num_workers, test = False, limit = None):
     """Returns torch.utils.data.DataLoader for custom coco dataset."""
     # Initialise autocorrect object
     spell = Speller()
@@ -108,7 +141,9 @@ def get_loader(root, coco, vocab, transform, data_augmentations, batch_size, shu
                        vocab=vocab,
                        transform=transform, 
                        data_augmentations = data_augmentations,
-                       spell = spell)
+                       spell = spell,
+                       test = test,
+                       limit = limit)
     
     # Data loader for COCO dataset
     # This will return (images, captions, lengths) for each iteration.
@@ -119,5 +154,7 @@ def get_loader(root, coco, vocab, transform, data_augmentations, batch_size, shu
                                               batch_size=batch_size,
                                               shuffle=shuffle,
                                               num_workers=num_workers,
-                                              collate_fn=collate_fn)
+                                              collate_fn=collate_fn if not test else test_collate_fn)
+
+    
     return data_loader

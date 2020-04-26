@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import time
 import datetime as dt
 import sys
+import json
 
 from tqdm import tqdm
 from copy import deepcopy
@@ -284,11 +285,11 @@ def train_model(train_dataloader,
 
     encoder_frozen = True
     for epoch in range(num_epochs):
-        if encoder_frozen and epoch == encoder_unfreeze_epoch:
-            for p in model[0].parameters():
-                p.requires_grad = True
-            encoder_frozen = False
-            log_print(f'Encoder Unfrozen', logger)
+        # if encoder_frozen and epoch == encoder_unfreeze_epoch:
+        #     for p in model[0].parameters():
+        #         p.requires_grad = True
+        #     encoder_frozen = False
+        #     log_print(f'Encoder Unfrozen', logger)
         
         log_print(f'\nEpoch: {epoch}', logger)
         
@@ -384,7 +385,7 @@ def validate_and_plot(validation_dataloader,
                 y_pred, _ = decoder.beam_search(features) # Note y_pred is a list
             y_pred = y_pred[1:-1]
             y = y[:,1:-1] # Offset the tensor to exclude start token for the calculation of metrics
-            accuracy = metrics[0].evaluate(y_pred, y.tolist()[0]) # Compute accuracy
+            accuracy = metrics[0].evaluate([y_pred], y.tolist())[0] # Compute accuracy
             bleu_rouge_scores = metrics[1].evaluate([y_pred], y, img_ids)
             
             bleu_rouge = {'Accuracy':accuracy,
@@ -430,3 +431,52 @@ def validate_and_plot(validation_dataloader,
         _plot_topn(start_rank, end_rank-start_rank,highest_processed, metrics_to_plot, 'Highest')
 
     log_print(f'Validation completed', logger)
+
+def greedy_prediction(validation_dataloader,
+                    encoder,
+                    decoder,
+                    metrics,
+                    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
+                    logger = None,
+                    validate = True,
+                    results_save_path = os.path.join(os.getcwd(),'results')):
+
+    log_print('Running Inference...', logger)
+    results = []
+    metric_results = []
+
+    if torch.cuda.is_available():
+        encoder.cuda()
+        decoder.cuda()
+
+    y_preds = []
+    image_id_list = []
+    with tqdm(validation_dataloader, desc='Inference', file=sys.stdout, disable=False) as iterator:
+        for _, (x, y, lengths, img_ids) in enumerate(iterator):
+            x, y = x.to(device), y.to(device)
+            print(x.shape)
+            print(y.shape)
+            raise Exception
+            with torch.no_grad():
+                features = encoder(x)
+                y_pred = decoder.sample(features) # Note y_pred is a list
+
+            y_pred = [tnsr[:-1].tolist() for tnsr in y_pred]
+            y_preds += y_pred
+            image_id_list += img_ids
+            
+            for image_id, caption in zip(img_ids, caption_list_to_words(y_pred,decoder.vocab)):
+                results.append({'image_id':image_id,'caption':caption})
+
+    if validate:
+        bleu_rouge_scores = metrics[1].evaluate(y_preds, None, image_id_list)
+        bleu_rouge = {'Bleu_1': bleu_rouge_scores[0],
+                        'Bleu_2': bleu_rouge_scores[1],
+                        'Bleu_3': bleu_rouge_scores[2],
+                        'Bleu_4': bleu_rouge_scores[3],
+                        'Rouge': bleu_rouge_scores[4]}
+        for k, v in bleu_rouge.items():
+            print(f'{k}:{v:.5f}')
+    
+    with open(os.path.join(results_save_path,'results.json'), 'w') as outfile:
+        json.dump(results, outfile)

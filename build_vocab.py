@@ -18,8 +18,9 @@ from autocorrect import Speller
 
 class Vocabulary(object):
     """Simple vocabulary wrapper."""
-    def __init__(self):
+    def __init__(self, counter = None):
         self.word2idx = {}
+        self.word2count = counter
         self.idx2word = {}
         self.idx = 0
 
@@ -43,17 +44,17 @@ def build_vocab(json, threshold, spell = None):
     ids = coco.anns.keys()
     with tqdm(ids, desc='Tokenizer', file=sys.stdout, disable=False) as iterator:
         for id in iterator:
-            caption = str(coco.anns[id]['caption'])
-            tokens = nltk.tokenize.word_tokenize(normalize_string(caption.lower()))
+            caption = normalize_string(str(coco.anns[id]['caption']).lower())
+            if spell is not None:
+                caption = spell(caption)
+            tokens = nltk.tokenize.word_tokenize(caption)
             counter.update(tokens)
 
     # If the word frequency is less than 'threshold', then the word is discarded.
     words = [word for word, cnt in counter.items() if cnt >= threshold]
-    if spell is not None:
-        words = [spell(word) for word, cnt in counter.items()]
 
     # Create a vocab wrapper and add some special tokens.
-    vocab = Vocabulary()
+    vocab = Vocabulary(counter = counter)
     vocab.add_word('<pad>') # index 0 is the padding index
     vocab.add_word('<start>') # index 1 is start
     # Add the words to the vocabulary.
@@ -203,7 +204,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--caption_path', type=str, 
-                        default='data/coco2014/trainval_coco2014_captions/captions_train2014.json', 
+                        default='data/annotations/captions_train2014.json', 
                         help='path for train annotation file')
     parser.add_argument('--vocab_path', type=str, default='./data/vocab.pkl', 
                         help='path for saving vocabulary wrapper')
