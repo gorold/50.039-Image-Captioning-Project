@@ -55,11 +55,11 @@ def main(args):
     # Build data loaders
     validation_dataloader = get_loader(args.val_dir, val_coco, vocab, 
                              transform, None, args.batch_size,
-                             shuffle=False, num_workers=args.num_workers, limit = 1000)
+                             shuffle=False, num_workers=args.num_workers)
 
     test_dataloader = get_loader(args.test_dir, test_coco, vocab, 
                              transform, None, args.batch_size,
-                             shuffle=False, num_workers=args.num_workers, limit = None, test=True)
+                             shuffle=False, num_workers=args.num_workers,test=True)
 
     # Load Model
     encoder, decoder = torch.load(args.saved_model_path, map_location = device)

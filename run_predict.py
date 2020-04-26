@@ -51,8 +51,8 @@ def main(args):
     
     # Build data loaders
     validation_dataloader = get_loader(args.val_dir, val_coco, vocab, 
-                             transform, None, args.batch_size,
-                             shuffle=True, num_workers=args.num_workers)
+                             transform, None, 1,
+                             shuffle=True, num_workers=args.num_workers, limit = 1000)
 
     # Load Model
     encoder, decoder = torch.load(args.saved_model_path, map_location = device)
@@ -81,22 +81,10 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type=str, default='models/' , help='path for saving trained models')
     parser.add_argument('--crop_size', type=int, default=224 , help='size for randomly cropping images')
     parser.add_argument('--vocab_path', type=str, default='data/vocab.pkl', help='path for vocabulary wrapper')
-    parser.add_argument('--train_dir', type=str, default='data/train2014', help='directory for resized images')
     parser.add_argument('--val_dir', type=str, default='data/val2014', help='directory for resized images')
-    parser.add_argument('--train_caption_path', type=str, default='data/annotations/captions_train2014.json', help='path for train annotation json file')
-    parser.add_argument('--val_caption_path', type=str, default='data/annnotations/captions_val2014.json', help='path for train annotation json file')
-    parser.add_argument('--saved_model_path', type=str , default='model/best_model_dl.pth', help='Path to load model')
+    parser.add_argument('--val_caption_path', type=str, default='data/annotations/captions_val2014.json', help='path for train annotation json file')
+    parser.add_argument('--saved_model_path', type=str , default='model/best_model_en.pth', help='Path to load model')
     
-    # Model parameters
-    parser.add_argument('--embed_size', type=int , default=300, help='dimension of word embedding vectors')
-    parser.add_argument('--lstm1_size', type=int, default=512, help='dimension of lstm1 hidden states')
-    parser.add_argument('--lstm2_size', type=int, default=512, help='dimension of lstm2 hidden states')
-    parser.add_argument('--att_size', type=int, default=256, help='dimension of attension inner dimension')
-    parser.add_argument('--feature_size', type=int, default=1280, help='dimension of CNN output')
-    
-    parser.add_argument('--num_epochs', type=int, default=5)
-    parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=10)
-    parser.add_argument('--learning_rate', type=float, default=0.001)
     args = parser.parse_args()
     main(args)

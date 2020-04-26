@@ -385,7 +385,7 @@ def validate_and_plot(validation_dataloader,
                 y_pred, _ = decoder.beam_search(features) # Note y_pred is a list
             y_pred = y_pred[1:-1]
             y = y[:,1:-1] # Offset the tensor to exclude start token for the calculation of metrics
-            accuracy = metrics[0].evaluate([y_pred], y.tolist())[0] # Compute accuracy
+            accuracy = metrics[0].evaluate([y_pred], y.tolist()) # Compute accuracy
             bleu_rouge_scores = metrics[1].evaluate([y_pred], y, img_ids)
             
             bleu_rouge = {'Accuracy':accuracy,
@@ -454,9 +454,6 @@ def greedy_prediction(validation_dataloader,
     with tqdm(validation_dataloader, desc='Inference', file=sys.stdout, disable=False) as iterator:
         for _, (x, y, lengths, img_ids) in enumerate(iterator):
             x, y = x.to(device), y.to(device)
-            print(x.shape)
-            print(y.shape)
-            raise Exception
             with torch.no_grad():
                 features = encoder(x)
                 y_pred = decoder.sample(features) # Note y_pred is a list
@@ -477,6 +474,9 @@ def greedy_prediction(validation_dataloader,
                         'Rouge': bleu_rouge_scores[4]}
         for k, v in bleu_rouge.items():
             print(f'{k}:{v:.5f}')
+
+    if not os.path.exists(results_save_path):
+        os.makedirs(results_save_path)
     
     with open(os.path.join(results_save_path,'results.json'), 'w') as outfile:
         json.dump(results, outfile)
