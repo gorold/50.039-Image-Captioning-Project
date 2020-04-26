@@ -77,7 +77,7 @@ def main(args):
                     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
                     logger = None,
                     validate = True,
-                    results_save_path = os.path.join(os.getcwd(),'results'))
+                    results_save_path = os.path.join(os.getcwd(),'val_results'))
 
     greedy_prediction(test_dataloader,
                     encoder,
@@ -86,20 +86,20 @@ def main(args):
                     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu"),
                     logger = None,
                     validate = False,
-                    results_save_path = os.path.join(os.getcwd(),'results'))
+                    results_save_path = os.path.join(os.getcwd(),'test_results'))
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--model_path', type=str, default='models/' , help='path for saving trained models')
     parser.add_argument('--crop_size', type=int, default=224 , help='size for randomly cropping images')
-    parser.add_argument('--vocab_path', type=str, default='data/oldvocab.pkl', help='path for vocabulary wrapper')
+    parser.add_argument('--vocab_path', type=str, default='data/vocab.pkl', help='path for vocabulary wrapper')
     parser.add_argument('--test_dir', type=str, default='data/test2014', help='directory for resized images')
     parser.add_argument('--val_dir', type=str, default='data/val2014', help='directory for resized images')
     parser.add_argument('--test_annotation_path', type=str, default='data/annotations/image_info_test2014.json', help='path for test annotation json file')
     parser.add_argument('--val_caption_path', type=str, default='data/annotations/captions_val2014.json', help='path for train annotation json file')
-    parser.add_argument('--saved_model_path', type=str , default='model/best_model.pth', help='Path to load model')
+    parser.add_argument('--saved_model_path', type=str , default='model/best_model_mn.pth', help='Path to load model')
     
-    parser.add_argument('--batch_size', type=int, default=5)
-    parser.add_argument('--num_workers', type=int, default=1)
+    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--num_workers', type=int, default=10)
     args = parser.parse_args()
     main(args)

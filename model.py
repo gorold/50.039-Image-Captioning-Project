@@ -40,23 +40,29 @@ class Attention(nn.Module):
         return output    
 
 class EncoderCNN(nn.Module):
-    def __init__(self):
+    def __init__(self, encoder_name = 'efficientnet-b0'):
         """Load the pretrained ResNet-152 and replace top fc layer."""
         super(EncoderCNN, self).__init__()
-        net = EfficientNet.from_pretrained('efficientnet-b0')
-        net._avg_pooling = nn.Identity()
-        net._dropout = nn.Identity()
-        net._fc = nn.Identity()
-
-        # resnet = models.resnet152(pretrained=True)
-        # modules = list(resnet.children())[:-2]      # Delete the last fc layer and adaptive pooling.
-        # net = nn.Sequential(*modules)
-        # net = models.mobilenet_v2(pretrained=True).features
+        if 'efficientnet' in encoder_name:
+            net = EfficientNet.from_pretrained('efficientnet-b0')
+            net._avg_pooling = nn.Identity()
+            net._dropout = nn.Identity()
+            net._fc = nn.Identity()
+        elif encoder_name == 'resnet152':
+            resnet = models.resnet152(pretrained=True)
+            modules = list(resnet.children())[:-2]      # Delete the last fc layer and adaptive pooling.
+            net = nn.Sequential(*modules)
+        elif encoder_name == 'mobilenet_v2':
+            net = models.mobilenet_v2(pretrained=True).features
         self.net = net
+        self.encoder_name = encoder_name
         
     def forward(self, images):
         """Extract feature maps from input images."""
-        features = self.net(images).view(-1,1280,7,7)
+        if 'efficientnet' in self.encoder_name:
+            features = self.net(images).view(-1,1280,7,7)
+        else:
+            features = self.net(images)
         features = F.normalize(features, p=2, dim=1) # L2 normalization over channels
         return features
 
