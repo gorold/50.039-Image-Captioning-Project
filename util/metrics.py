@@ -48,11 +48,14 @@ def caption_list_to_words(caption_list, vocab):
     return caption_pred_list
 
 def compute_accuracy_list(y_pred, y):
-    counts = 0
-    for word_idx in y:
-        if word_idx in y_pred:
-            counts += 1
-    return counts/len(y)
+    results = []
+    for predicted_caption, gt_caption in zip(y_pred,y):
+        counts = 0
+        for word_idx in gt_caption:
+            if word_idx in predicted_caption:
+                counts += 1
+        results.append(counts/len(gt_caption))
+    return np.mean(results)
 
 # Modules
 class Metric(object):

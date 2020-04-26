@@ -51,6 +51,7 @@ class EncoderCNN(nn.Module):
         # resnet = models.resnet152(pretrained=True)
         # modules = list(resnet.children())[:-2]      # Delete the last fc layer and adaptive pooling.
         # net = nn.Sequential(*modules)
+        # net = models.mobilenet_v2(pretrained=True).features
         self.net = net
         
     def forward(self, images):
@@ -151,15 +152,22 @@ class DecoderRNN(nn.Module):
         """
         batch_size = features.shape[0]
         lengths = [1 for _ in range(batch_size)]
-        outputs = torch.empty((batch_size, 0), dtype=torch.long).to(self.device)
+        sentences = torch.empty((batch_size, 0), dtype=torch.long).to(self.device)
+        outputs = [False for _ in range(batch_size)]
         done = torch.full((batch_size, 1), False, dtype=torch.bool).to(self.device)
         ha0 = ca0 = hl0 = cl0 = None
         prev_word = torch.full((batch_size, 1), self.vocab('<start>'), dtype=torch.long).to(self.device)
         while not torch.all(done):
             logits, (ha0, ca0, hl0, cl0) = self(features, prev_word, lengths, ha0, ca0, hl0, cl0)
-            prev_word = logits.argmax(dim=2)
-            outputs = torch.cat((outputs, prev_word), dim=1)
-            done[prev_word == self.vocab('<end>')] = True
+            prev_word = logits.argmax(dim=1)
+            sentences = torch.cat((sentences, prev_word), dim=1)
+            mask = prev_word == self.vocab('<end>')
+            if torch.any(mask):
+                for idx in mask.nonzero():
+                    idx = idx[0]
+                    if done[idx] != True:
+                        outputs[idx] = sentences[idx]
+                done[mask] = True
         return outputs
     
     def beam_search(self, features, k=5, max_seq_length = 200):
