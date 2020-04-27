@@ -376,6 +376,9 @@ def validate_and_plot(validation_dataloader,
         encoder.cuda()
         decoder.cuda()
 
+    encoder.eval()
+    decoder.eval()
+
     with tqdm(validation_dataloader, desc='Inference', file=sys.stdout, disable=False) as iterator:
         for _, (x, y, lengths, img_ids) in enumerate(iterator):
             assert x.shape[0] == 1, 'Batch size must be 1'
@@ -447,6 +450,9 @@ def greedy_prediction(validation_dataloader,
     if torch.cuda.is_available():
         encoder.cuda()
         decoder.cuda()
+                      
+    encoder.eval()
+    decoder.eval()
 
     y_preds = []
     image_id_list = []
