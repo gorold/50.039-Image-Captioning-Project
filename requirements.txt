@@ -4,7 +4,7 @@ albumentations==0.4.5
 gensim==3.8.1
 lmdb==0.98
 autocorrect==1.1.0
-numpy==1.18.1
+numpy==1.22.0
 tqdm==4.42.1
 dash_core_components==1.9.1
 dash==1.11.0
